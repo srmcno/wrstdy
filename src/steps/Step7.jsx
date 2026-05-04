@@ -5,13 +5,7 @@ import {
   affordabilityIndex, cost5000, calc5Yr, debtToIncome, baseCoverage,
   costPer1000, operatingRatio, nv, fmt
 } from '../lib/calc.js';
-
-const KEY_STORAGE = 'wrs-anthropic-key';
-const BUILD_KEY = import.meta.env.VITE_ANTHROPIC_KEY || '';
-const MODEL = 'claude-opus-4-7';
-
-const safeGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
-const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
+import { chat, KEY_STORAGE, BUILD_KEY, MODEL_HEAVY as MODEL, safeGet, safeSet } from '../lib/ai.js';
 
 const SYSTEM_PROMPT = `You are a senior financial analyst for the Choctaw Nation Office of Water Resource Management (OWRM). You write rate-study analyses for tribal public water systems whose boards include non-experts.
 
@@ -83,29 +77,7 @@ function buildContext(study) {
   ].join('\n');
 }
 
-async function chat(apiKey, history) {
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: history,
-    }),
-  });
-  if (!resp.ok) {
-    const t = await resp.text();
-    throw new Error(`HTTP ${resp.status}: ${t.slice(0, 300)}`);
-  }
-  const data = await resp.json();
-  return data.content?.map(b => b.text || '').join('') || '';
-}
+// Step 7's call site uses the shared chat() from lib/ai.js with our system prompt.
 
 export function Step7({ study, onField }) {
   const [loading, setLoading] = useState(false);
@@ -118,9 +90,18 @@ export function Step7({ study, onField }) {
 
   // The AI conversation history. Each entry: { role: 'user' | 'assistant', content: string }.
   // We store the full history on the study so it persists across sessions.
-  const history = study.aiHistory || [];
+  // Migration: studies created before chat support only have aiAnalysis.content.
+  // Surface that as a synthetic single-turn history so the user can see and follow up on it.
+  const rawHistory = study.aiHistory || [];
+  const legacy = rawHistory.length === 0 && study.aiAnalysis?.content
+    ? [
+        { role: 'user', content: '(Original analysis generated before chat history was tracked. Send a follow-up below to refine it.)' },
+        { role: 'assistant', content: study.aiAnalysis.content },
+      ]
+    : null;
+  const history = legacy || rawHistory;
   const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
-  const lastAnalysis = lastAssistantMsg?.content || study.aiAnalysis?.content || '';
+  const lastAnalysis = lastAssistantMsg?.content || '';
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -139,10 +120,12 @@ export function Step7({ study, onField }) {
       const ctx = buildContext(study);
       const userMsg = `${ctx}\n\n---\n\nPlease analyze this water rate study and produce the standard board-ready report (Executive Summary → Financial Health → Rate Justification → Affordability → Risk Flags → Recommendations → Suggested Motion Language). Be specific with numbers.`;
       const newHistory = [{ role: 'user', content: userMsg }];
-      const reply = await chat(apiKey, newHistory);
+      const reply = await chat({ system: SYSTEM_PROMPT, history: newHistory });
       const finalHistory = [...newHistory, { role: 'assistant', content: reply }];
-      onField('aiHistory', finalHistory);
-      onField('aiAnalysis', { content: reply, generatedAt: new Date().toISOString() });
+      onField({
+        aiHistory: finalHistory,
+        aiAnalysis: { content: reply, generatedAt: new Date().toISOString() },
+      });
     } catch (e) {
       setErr(e.message || String(e));
     } finally {
@@ -158,10 +141,12 @@ export function Step7({ study, onField }) {
     setLoading(true);
     try {
       const newHistory = [...history, { role: 'user', content: text }];
-      const reply = await chat(apiKey, newHistory);
+      const reply = await chat({ system: SYSTEM_PROMPT, history: newHistory });
       const finalHistory = [...newHistory, { role: 'assistant', content: reply }];
-      onField('aiHistory', finalHistory);
-      onField('aiAnalysis', { content: reply, generatedAt: new Date().toISOString() });
+      onField({
+        aiHistory: finalHistory,
+        aiAnalysis: { content: reply, generatedAt: new Date().toISOString() },
+      });
       setFollowUp('');
     } catch (e) {
       setErr(e.message || String(e));
@@ -172,8 +157,7 @@ export function Step7({ study, onField }) {
 
   function clearConversation() {
     if (!window.confirm('Discard the current AI conversation and start over? The latest analysis will also be removed from the report.')) return;
-    onField('aiHistory', []);
-    onField('aiAnalysis', { content: '', generatedAt: '' });
+    onField({ aiHistory: [], aiAnalysis: { content: '', generatedAt: '' } });
   }
 
   // The first user message is huge (full data dump). Hide it from the UI.

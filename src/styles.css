@@ -22,7 +22,7 @@
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { height: 100%; }
-body { font-family: var(--font); font-size: 13px; font-weight: 400; color: var(--text); background: var(--body-bg); overflow: hidden; }
+body { font-family: var(--font); font-size: 14px; font-weight: 400; color: var(--text); background: var(--body-bg); overflow: hidden; }
 #root { display: flex; flex-direction: column; overflow: hidden; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

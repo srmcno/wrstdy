@@ -9,6 +9,11 @@ import {
 } from 'docx';
 import { fmt } from '../calc.js';
 import { renderFundChart, renderRevExpChart, renderExpenseBreakdown } from './charts.js';
+import { parseMarkdown } from './markdown.js';
+
+// Gill Sans Nova ships with Microsoft Office; Word will render it natively
+// for OWRM staff. On systems without it, Word falls back to a similar sans.
+const DOC_FONT = 'Gill Sans Nova';
 
 const TEAL = '1E3D3B';
 const LIME = '76B900';
@@ -31,7 +36,7 @@ function lightBorder() {
 function H(text, level = HeadingLevel.HEADING_1) {
   return new Paragraph({
     heading: level,
-    children: [new TextRun({ text, bold: true, color: TEAL, font: 'Calibri' })],
+    children: [new TextRun({ text, bold: true, color: TEAL, font: DOC_FONT })],
     spacing: { before: 240, after: 120 },
   });
 }
@@ -42,7 +47,7 @@ function P(text, opts = {}) {
       bold: opts.bold,
       italics: opts.italic,
       color: opts.color || '0F172A',
-      font: 'Calibri',
+      font: DOC_FONT,
       size: opts.size || 22, // half-points (22 = 11pt)
     })],
     spacing: { after: opts.after ?? 120, line: 320 },
@@ -64,7 +69,7 @@ function tHead(text, opts = {}) {
     shading: { type: ShadingType.CLEAR, fill: TEAL, color: 'auto' },
     children: [new Paragraph({
       alignment: opts.align || AlignmentType.LEFT,
-      children: [new TextRun({ text, bold: true, color: 'FFFFFF', size: 18, font: 'Calibri' })],
+      children: [new TextRun({ text, bold: true, color: 'FFFFFF', size: 18, font: DOC_FONT })],
     })],
     margins: { top: 80, bottom: 80, left: 120, right: 120 },
   });
@@ -74,7 +79,7 @@ function tCell(text, opts = {}) {
     shading: opts.shade ? { type: ShadingType.CLEAR, fill: SURFACE, color: 'auto' } : undefined,
     children: [new Paragraph({
       alignment: opts.align || AlignmentType.LEFT,
-      children: [new TextRun({ text, bold: opts.bold, color: opts.color || '0F172A', size: 18, font: 'Calibri' })],
+      children: [new TextRun({ text, bold: opts.bold, color: opts.color || '0F172A', size: 18, font: DOC_FONT })],
     })],
     margins: { top: 60, bottom: 60, left: 120, right: 120 },
   });
@@ -100,7 +105,7 @@ function buildTable(headers, rows, footer) {
         shading: { type: ShadingType.CLEAR, fill: TEAL, color: 'auto' },
         children: [new Paragraph({
           alignment: c.align || (i > 0 ? AlignmentType.RIGHT : AlignmentType.LEFT),
-          children: [new TextRun({ text: c.text || c, bold: true, color: 'FFFFFF', size: 18, font: 'Calibri' })],
+          children: [new TextRun({ text: c.text || c, bold: true, color: 'FFFFFF', size: 18, font: DOC_FONT })],
         })],
         margins: { top: 80, bottom: 80, left: 120, right: 120 },
       })),
@@ -142,8 +147,8 @@ export async function exportDocx(report, filename, sealUint8) {
     children: [new Paragraph({
       alignment: AlignmentType.RIGHT,
       children: [
-        new TextRun({ text: 'CHOCTAW NATION', bold: true, color: TEAL, size: 18, font: 'Calibri' }),
-        new TextRun({ text: '   Office of Water Resource Management', color: MID, size: 16, font: 'Calibri' }),
+        new TextRun({ text: 'CHOCTAW NATION', bold: true, color: TEAL, size: 18, font: DOC_FONT }),
+        new TextRun({ text: '   Office of Water Resource Management', color: MID, size: 16, font: DOC_FONT }),
       ],
     })],
   });
@@ -151,10 +156,10 @@ export async function exportDocx(report, filename, sealUint8) {
     children: [new Paragraph({
       alignment: AlignmentType.CENTER,
       children: [
-        new TextRun({ text: 'Water Rate Study  •  Page ', color: DIM, size: 16, font: 'Calibri' }),
-        new TextRun({ children: [PageNumber.CURRENT], color: DIM, size: 16, font: 'Calibri' }),
-        new TextRun({ text: ' of ', color: DIM, size: 16, font: 'Calibri' }),
-        new TextRun({ children: [PageNumber.TOTAL_PAGES], color: DIM, size: 16, font: 'Calibri' }),
+        new TextRun({ text: 'Water Rate Study  •  Page ', color: DIM, size: 16, font: DOC_FONT }),
+        new TextRun({ children: [PageNumber.CURRENT], color: DIM, size: 16, font: DOC_FONT }),
+        new TextRun({ text: ' of ', color: DIM, size: 16, font: DOC_FONT }),
+        new TextRun({ children: [PageNumber.TOTAL_PAGES], color: DIM, size: 16, font: DOC_FONT }),
       ],
     })],
   });
@@ -171,19 +176,19 @@ export async function exportDocx(report, filename, sealUint8) {
   }
   children.push(new Paragraph({
     alignment: AlignmentType.LEFT,
-    children: [new TextRun({ text: 'CHOCTAW NATION', bold: true, color: TEAL, size: 32, font: 'Calibri' })],
+    children: [new TextRun({ text: 'CHOCTAW NATION', bold: true, color: TEAL, size: 32, font: DOC_FONT })],
   }));
   children.push(new Paragraph({
     alignment: AlignmentType.LEFT,
-    children: [new TextRun({ text: 'Office of Water Resource Management', color: LIME, size: 22, font: 'Calibri' })],
+    children: [new TextRun({ text: 'Office of Water Resource Management', color: LIME, size: 22, font: DOC_FONT })],
     spacing: { after: 480 },
   }));
   children.push(new Paragraph({
-    children: [new TextRun({ text: 'Water Rate Study', bold: true, color: TEAL, size: 56, font: 'Calibri' })],
+    children: [new TextRun({ text: 'Water Rate Study', bold: true, color: TEAL, size: 56, font: DOC_FONT })],
     spacing: { after: 120 },
   }));
   children.push(new Paragraph({
-    children: [new TextRun({ text: 'Final Report — Board / Council Briefing', color: MID, size: 28, font: 'Calibri' })],
+    children: [new TextRun({ text: 'Final Report — Board / Council Briefing', color: MID, size: 28, font: DOC_FONT })],
     spacing: { after: 480 },
   }));
   children.push(P('PREPARED FOR', { size: 18, color: DIM, after: 60 }));
@@ -324,16 +329,38 @@ export async function exportDocx(report, filename, sealUint8) {
   if (report.aiAnalysis) {
     children.push(H('Analyst Narrative'));
     children.push(P('AI-generated analysis based on the data captured in this study. Edit before sending to the board.', { color: DIM, italic: true, size: 18 }));
-    for (const para of report.aiAnalysis.split(/\n{2,}/)) {
-      const t = para.trim();
-      if (!t) continue;
-      // Lines that look like uppercase headers ("EXECUTIVE SUMMARY") render bold
-      if (/^[A-Z0-9 .,&/\-:()]{4,}$/.test(t.split(/\n/)[0])) {
-        const [head, ...rest] = t.split(/\n/);
-        children.push(P(head, { bold: true, color: TEAL, after: 60 }));
-        if (rest.length) children.push(P(rest.join(' '), {}));
-      } else {
-        children.push(P(t));
+    for (const blk of parseMarkdown(report.aiAnalysis)) {
+      if (blk.type === 'heading') {
+        const sizeMap = { 1: 30, 2: 26, 3: 22 };
+        children.push(new Paragraph({
+          spacing: { before: 240, after: 120 },
+          children: [new TextRun({
+            text: blk.runs.map(r => r.text).join(''),
+            bold: true,
+            color: TEAL,
+            font: DOC_FONT,
+            size: sizeMap[blk.level] || 22,
+          })],
+        }));
+      } else if (blk.type === 'paragraph') {
+        children.push(new Paragraph({
+          spacing: { after: 140, line: 320 },
+          children: blk.runs.map(r => new TextRun({
+            text: r.text, bold: r.bold, italics: r.italic,
+            font: DOC_FONT, size: 22, color: '0F172A',
+          })),
+        }));
+      } else if (blk.type === 'list') {
+        for (const item of blk.items) {
+          children.push(new Paragraph({
+            bullet: { level: 0 },
+            spacing: { after: 80 },
+            children: item.map(r => new TextRun({
+              text: r.text, bold: r.bold, italics: r.italic,
+              font: DOC_FONT, size: 22, color: '0F172A',
+            })),
+          }));
+        }
       }
     }
   }
@@ -354,8 +381,8 @@ export async function exportDocx(report, filename, sealUint8) {
     title: report.studyName || 'Water Rate Study',
     styles: {
       paragraphStyles: [
-        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', run: { font: 'Calibri', size: 32, bold: true, color: TEAL } },
-        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', run: { font: 'Calibri', size: 26, bold: true, color: TEAL } },
+        { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', run: { font: DOC_FONT, size: 32, bold: true, color: TEAL } },
+        { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', run: { font: DOC_FONT, size: 26, bold: true, color: TEAL } },
       ],
     },
     sections: [{

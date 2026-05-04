@@ -34,12 +34,19 @@ import { Step8 } from '../steps/Step8.jsx';
 
 export function Workspace({ study, onUpdate, onDelete }) {
   const [step, setStep] = useState(0);
-  const field = (k, v) => onUpdate({
-    ...study,
-    [k]: v,
-    updatedAt: new Date().toISOString(),
-    status: study.status === 'draft' && step > 0 ? 'in-progress' : study.status
-  });
+  // field('foo', v) sets a single key.
+  // field({ a, b }) patches multiple keys atomically — required when one
+  // handler needs to set two fields back-to-back, since `study` is a closed-
+  // over snapshot and a second call would otherwise drop the first update.
+  const field = (kOrPatch, v) => {
+    const patch = typeof kOrPatch === 'string' ? { [kOrPatch]: v } : kOrPatch;
+    onUpdate({
+      ...study,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+      status: study.status === 'draft' && step > 0 ? 'in-progress' : study.status,
+    });
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="ws-bar no-print">

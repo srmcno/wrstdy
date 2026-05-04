@@ -6,6 +6,14 @@ import autoTable from 'jspdf-autotable';
 import { fmt } from '../calc.js';
 import { SEAL } from '../seal.js';
 import { renderFundChart, renderRevExpChart, renderExpenseBreakdown } from './charts.js';
+import { parseMarkdown } from './markdown.js';
+
+// jsPDF only ships built-in PostScript fonts (helvetica/times/courier).
+// Embedding Gill Sans Nova would require a license we don't have, so the
+// PDF uses Helvetica — the closest royalty-free equivalent shipped with
+// every PDF reader. The on-screen app and the .docx export both still use
+// Gill Sans Nova / Gill Sans MT.
+const FONT = 'helvetica';
 
 const TEAL = [30, 61, 59];
 const LIME = [118, 185, 0];
@@ -36,10 +44,10 @@ function drawHeader(doc, report, sealDataUrl) {
     try { doc.addImage(sealDataUrl, 'JPEG', 10, 5, 16, 16); } catch { /* ignore */ }
   }
   doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setFontSize(13);
   doc.text('CHOCTAW NATION', 30, 12);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...LIME);
   doc.text('Office of Water Resource Management', 30, 17);
@@ -57,7 +65,7 @@ function drawFooter(doc) {
   const total = doc.internal.getNumberOfPages();
   for (let i = 1; i <= total; i++) {
     doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(FONT, 'normal');
     doc.setFontSize(7);
     doc.setTextColor(...DIM);
     doc.setDrawColor(...BORDER);
@@ -68,7 +76,7 @@ function drawFooter(doc) {
 }
 
 function H1(doc, text, y) {
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setFontSize(15);
   doc.setTextColor(...TEAL);
   doc.text(text, 15, y);
@@ -80,7 +88,7 @@ function H1(doc, text, y) {
 }
 
 function H2(doc, text, y) {
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...TEAL);
   doc.text(text.toUpperCase(), 15, y);
@@ -90,7 +98,7 @@ function H2(doc, text, y) {
 }
 
 function P(doc, text, y, opts = {}) {
-  doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+  doc.setFont(FONT, opts.bold ? 'bold' : 'normal');
   doc.setFontSize(opts.size || 10);
   doc.setTextColor(...(opts.color || [15, 23, 42]));
   const maxWidth = opts.maxWidth || 180;
@@ -107,6 +115,97 @@ function ensureSpace(doc, y, needed = 30) {
   return y;
 }
 
+// Render parsed markdown blocks. Headings get teal styling and an underline,
+// paragraphs are mixed-run text supporting **bold** and *italic*, lists use a
+// bullet glyph. Spans pages automatically and re-draws the page header.
+function renderMarkdownPDF(doc, report, sealDataUrl, blocks, startY) {
+  let y = startY;
+  const ensure = (need) => {
+    if (y + need > 280) {
+      doc.addPage();
+      drawHeader(doc, report, sealDataUrl);
+      y = 35;
+    }
+  };
+
+  for (const blk of blocks) {
+    if (blk.type === 'heading') {
+      const sizes = { 1: 14, 2: 12, 3: 10.5 };
+      const padTop = { 1: 6, 2: 5, 3: 4 };
+      const padBot = { 1: 4, 2: 3, 3: 2 };
+      ensure(sizes[blk.level] + 6);
+      y += padTop[blk.level];
+      doc.setFont(FONT, 'bold');
+      doc.setFontSize(sizes[blk.level]);
+      doc.setTextColor(...TEAL);
+      const text = blk.runs.map(r => r.text).join('');
+      doc.text(text, 15, y);
+      y += sizes[blk.level] * 0.4;
+      if (blk.level === 1) {
+        doc.setDrawColor(...LIME);
+        doc.setLineWidth(0.6);
+        doc.line(15, y - 1, 30, y - 1);
+        doc.setLineWidth(0.2);
+      } else if (blk.level === 2) {
+        doc.setDrawColor(...BORDER);
+        doc.line(15, y - 1, 195, y - 1);
+      }
+      y += padBot[blk.level];
+      continue;
+    }
+    if (blk.type === 'paragraph') {
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+      y = drawRichText(doc, blk.runs, 15, y, 180, 5);
+      y += 3;
+      continue;
+    }
+    if (blk.type === 'list') {
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+      for (const item of blk.items) {
+        doc.setFont(FONT, 'bold');
+        doc.setTextColor(...TEAL);
+        ensure(6);
+        doc.text('•', 15, y);
+        doc.setFont(FONT, 'normal');
+        doc.setTextColor(15, 23, 42);
+        y = drawRichText(doc, item, 19, y, 176, 5);
+        y += 1;
+      }
+      y += 3;
+    }
+  }
+  return y;
+
+  // Render an array of {text, bold, italic} runs as wrapped, justified text.
+  function drawRichText(doc, runs, x, yStart, width, lineH) {
+    let cy = yStart;
+    let cx = x;
+    let firstLine = true;
+    for (const run of runs) {
+      doc.setFont(FONT, run.bold ? 'bold' : (run.italic ? 'italic' : 'normal'));
+      // Split this run respecting the remaining width on the current line.
+      const words = run.text.split(/(\s+)/); // keep whitespace
+      for (const w of words) {
+        if (w === '') continue;
+        const wWidth = doc.getTextWidth(w);
+        // Need to wrap?
+        if (cx + wWidth > x + width && cx !== x) {
+          cy += lineH;
+          ensure(lineH);
+          cx = x;
+          firstLine = false;
+          if (/^\s+$/.test(w)) continue; // skip leading whitespace on new line
+        }
+        doc.text(w, cx, cy);
+        cx += wWidth;
+      }
+    }
+    return cy;
+  }
+}
+
 export async function exportPDF(report, filename) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const sealDataUrl = await loadSealAsDataUrl().catch(() => null);
@@ -114,11 +213,11 @@ export async function exportPDF(report, filename) {
   // ---- Cover page ----
   drawHeader(doc, report, sealDataUrl);
   let y = 50;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setFontSize(22);
   doc.setTextColor(...TEAL);
   doc.text('Water Rate Study', 15, y); y += 11;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setFontSize(13);
   doc.setTextColor(...MID);
   doc.text('Final Report — Board of Directors / Council Briefing', 15, y); y += 14;
@@ -142,11 +241,11 @@ export async function exportPDF(report, filename) {
   doc.setFillColor(240, 249, 224);
   doc.setDrawColor(134, 239, 172);
   doc.roundedRect(15, y, 180, 36, 2, 2, 'FD');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(FONT, 'bold');
   doc.setFontSize(9);
   doc.setTextColor(...TEAL);
   doc.text('AT A GLANCE', 21, y + 7);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(FONT, 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...MID);
   const cells = [
@@ -186,11 +285,11 @@ export async function exportPDF(report, filename) {
   ];
   factors.forEach(([t, d]) => {
     y = ensureSpace(doc, y, 14);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(FONT, 'bold');
     doc.setFontSize(10);
     doc.setTextColor(...TEAL);
     doc.text(t, 15, y);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(FONT, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(...MID);
     const split = doc.splitTextToSize(d, 175);
@@ -208,7 +307,7 @@ export async function exportPDF(report, filename) {
       r.metric, r.cur, r.prop, r.benchmark,
       r.propOk === null ? 'N/A' : (r.propOk ? '✓ Healthy' : '✗ Below'),
     ]),
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, textColor: [15, 23, 42] },
+    styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [15, 23, 42] },
     headStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     didParseCell: (data) => {
@@ -265,7 +364,7 @@ export async function exportPDF(report, filename) {
       ['Annual Expenses (5% inflation)', ...report.fiveYearOutlook.map(r => fmt.c(r.exp5))],
       ['Fund Balance (Proposed)', ...report.fiveYearOutlook.map(r => fmt.c(r.fundBalance))],
     ],
-    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2 },
+    styles: { font: FONT, fontSize: 8.5, cellPadding: 2 },
     headStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 }, 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
     margin: { left: 15, right: 15 },
@@ -311,7 +410,7 @@ export async function exportPDF(report, filename) {
     body: [
       ['Operating Ratio', report.curOR.toFixed(2), report.propOR.toFixed(2), report.propOR >= 1.25 ? '✓ Healthy' : report.propOR >= 1 ? '⚠ Break-even' : '✗ Below'],
     ],
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5 },
+    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
     headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     margin: { left: 15, right: 15 },
@@ -329,7 +428,7 @@ export async function exportPDF(report, filename) {
         ['5,000 gal Bill', fmt.c(report.cost5kCur), fmt.c(report.cost5kProp), `Monthly MHI: ${fmt.c(report.mhi)}`],
         ['Affordability Index', fmt.p(report.curAI), fmt.p(report.propAI), report.propAI < 0.015 ? 'USDA RD eligible' : report.propAI < 0.02 ? 'Affordable' : 'Affordability concern'],
       ],
-      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5 },
+      styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
       headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
       margin: { left: 15, right: 15 },
@@ -347,7 +446,7 @@ export async function exportPDF(report, filename) {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
     body: [['DTI', fmt.p(report.curDTI), fmt.p(report.propDTI), report.propDTI < 0.45 ? '✓ Manageable' : '✗ High']],
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5 },
+    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
     headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     margin: { left: 15, right: 15 },
@@ -363,7 +462,7 @@ export async function exportPDF(report, filename) {
       ['Monthly depreciation set-aside', fmt.c(report.curDepr), fmt.c(report.propDepr)],
       ['Monthly capital improvement set-aside', fmt.c(report.curLR), fmt.c(report.propLR)],
     ],
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5 },
+    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
     headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     margin: { left: 15, right: 15 },
@@ -391,7 +490,7 @@ export async function exportPDF(report, filename) {
       (report.revProp.monthly - report.revCur.monthly >= 0 ? '+' : '') + fmt.c(report.revProp.monthly - report.revCur.monthly),
       report.revCur.monthly > 0 ? ((report.revProp.monthly - report.revCur.monthly) / report.revCur.monthly * 100).toFixed(1) + '%' : '—',
     ]],
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5 },
+    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
     headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
     footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
@@ -407,7 +506,7 @@ export async function exportPDF(report, filename) {
       body: report.expCats.map(c => [c.label, fmt.c(c.cur), fmt.c(c.prop), (c.delta >= 0 ? '+' : '') + fmt.c(c.delta)]),
       foot: [['Total', fmt.c(report.curBT.total), fmt.c(report.propBT.total),
         (report.propBT.total - report.curBT.total >= 0 ? '+' : '') + fmt.c(report.propBT.total - report.curBT.total)]],
-      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.5 },
+      styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
       headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
       footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
@@ -423,25 +522,7 @@ export async function exportPDF(report, filename) {
     y = H1(doc, 'Analyst Narrative', y);
     y = P(doc, 'AI-generated analysis based on the data captured in this study.', y, { size: 9, color: DIM });
     y += 4;
-    const text = report.aiAnalysis;
-    const split = doc.splitTextToSize(text, 180);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    let line = 0;
-    while (line < split.length) {
-      const remaining = Math.floor((280 - y) / 5);
-      const chunk = split.slice(line, line + remaining);
-      doc.text(chunk, 15, y);
-      line += chunk.length;
-      if (line < split.length) {
-        doc.addPage();
-        drawHeader(doc, report, sealDataUrl);
-        y = 35;
-      } else {
-        y += chunk.length * 5;
-      }
-    }
+    y = renderMarkdownPDF(doc, report, sealDataUrl, parseMarkdown(report.aiAnalysis), y);
   }
 
   // ---- Final recommendations + notes ----

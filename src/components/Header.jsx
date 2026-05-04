@@ -1,5 +1,6 @@
 import { SEAL } from '../lib/seal.js';
 import { VER } from '../lib/constants.js';
+import { TextSizeMenu } from './TextSizeMenu.jsx';
 
 export function Header() {
   return (
@@ -11,9 +12,12 @@ export function Header() {
         <div className="bn-r" />
         <div className="bn-a">Water Rate Study Tool</div>
       </div>
-      <div className="hdr-e">
-        <div>FAITH ✦ FAMILY ✦ CULTURE</div>
-        <div style={{ marginTop: 2 }}>v{VER}</div>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <TextSizeMenu />
+        <div className="hdr-e" style={{ marginLeft: 0 }}>
+          <div>FAITH ✦ FAMILY ✦ CULTURE</div>
+          <div style={{ marginTop: 2 }}>v{VER}</div>
+        </div>
       </div>
     </header>
   );
