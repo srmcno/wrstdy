@@ -6,12 +6,14 @@ import {
 } from '../lib/calc.js';
 
 const KEY_STORAGE = 'wrs-anthropic-key';
+const BUILD_KEY = import.meta.env.VITE_ANTHROPIC_KEY || '';
 
 export function Step7({ study, onField }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(KEY_STORAGE) || '');
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(KEY_STORAGE) || BUILD_KEY);
+  const usingBuildKey = !localStorage.getItem(KEY_STORAGE) && !!BUILD_KEY;
   const ai = study.aiAnalysis || {};
 
   const saveKey = () => {
@@ -117,8 +119,10 @@ Be specific with numbers. Write for a board audience. Use plain language.`;
         <div className="card" style={{ background: 'var(--surface)' }}>
           <div className="sh">Anthropic API Key</div>
           <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 8 }}>
-            Stored in your browser's localStorage. Required only for the AI analysis feature.
-            Get a key at <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>console.anthropic.com</a>.
+            {usingBuildKey
+              ? 'Using the API key baked in at build time (VITE_ANTHROPIC_KEY). Override here to use a different key on this device only.'
+              : 'Stored in your browser\'s localStorage. Required only for the AI analysis feature.'}
+            {' '}Get a key at <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>console.anthropic.com</a>.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
