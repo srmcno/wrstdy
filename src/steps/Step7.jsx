@@ -8,16 +8,19 @@ import {
 const KEY_STORAGE = 'wrs-anthropic-key';
 const BUILD_KEY = import.meta.env.VITE_ANTHROPIC_KEY || '';
 
+const safeGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
+
 export function Step7({ study, onField }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(KEY_STORAGE) || BUILD_KEY);
-  const usingBuildKey = !localStorage.getItem(KEY_STORAGE) && !!BUILD_KEY;
+  const [apiKey, setApiKey] = useState(() => safeGet(KEY_STORAGE) || BUILD_KEY);
+  const usingBuildKey = !safeGet(KEY_STORAGE) && !!BUILD_KEY;
   const ai = study.aiAnalysis || {};
 
   const saveKey = () => {
-    localStorage.setItem(KEY_STORAGE, apiKey);
+    safeSet(KEY_STORAGE, apiKey);
     setShowKey(false);
   };
 

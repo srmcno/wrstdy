@@ -61,4 +61,6 @@ export function newStudy(name = '') {
 export const loadDB = () => {
   try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; }
 };
-export const saveDB = (s) => localStorage.setItem(SK, JSON.stringify(s));
+export const saveDB = (s) => {
+  try { localStorage.setItem(SK, JSON.stringify(s)); } catch { /* opaque origin / quota / disabled */ }
+};
