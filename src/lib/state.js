@@ -40,7 +40,9 @@ export function newStudy(name = '') {
     systemInfo: {
       systemName: '', pwsId: '', county: '', studyYear: yr,
       populationServed: '', sourceType: 'groundwater', systemType: 'community',
-      ownerContact: '', contactEmail: '', contactPhone: ''
+      ownerContact: '', contactEmail: '', contactPhone: '',
+      address: '', latitude: null, longitude: null,
+      waterBodySource: '', // e.g. "Hugo Lake", "Antlers Aquifer"
     },
     demographics: { medianMonthlyHHI: '', effectiveDate: '' },
     classes: defaultClasses(),

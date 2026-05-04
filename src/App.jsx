@@ -83,7 +83,7 @@ export default function App() {
         <main className="main">
           {active
             ? <Workspace study={active} onUpdate={update} onDelete={del} />
-            : <Dashboard studies={studies} onSelect={setActiveId} onCreate={() => setShowNew(true)} />
+            : <Dashboard studies={studies} onSelect={setActiveId} onCreate={() => setShowNew(true)} onLoadSample={create} />
           }
         </main>
       </div>

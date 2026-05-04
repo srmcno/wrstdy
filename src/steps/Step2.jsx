@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { defaultClasses, defaultTiers } from '../lib/state.js';
-import { nv, classMonthlyIncome, totalRevenue, fmt, calcBill } from '../lib/calc.js';
+import { defaultClasses, defaultTiers, defBudget } from '../lib/state.js';
+import { nv, classMonthlyIncome, totalRevenue, fmt, calcBill, calcHML, budgetTotal } from '../lib/calc.js';
 import { F, $I } from '../components/atoms.jsx';
 import { TierTable } from '../components/TierTable.jsx';
+import { ask, hasApiKey, MODEL_HEAVY } from '../lib/ai.js';
 
-// Deep-clone a class side ('cur' or 'prop') from another to avoid shared refs.
+// True for the user-defined slots c5/c6/c7 only (NOT 'com' for Commercial).
+const isCustomSlot = (id) => /^c\d/.test(id);
 const cloneSide = (s) => ({
   customers: s.customers || '',
   gallonsSold: s.gallonsSold || '',
@@ -19,6 +21,9 @@ export function Step2({ study, onField }) {
   const [tab, setTab] = useState('cur'); // 'cur' | 'prop' | 'cmp'
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState(null); // { explanation, tiers, minCharge }
+  const [aiErr, setAiErr] = useState('');
   const sel = classes.find(c => c.id === selId) || classes[0];
 
   const updClass = (id, path, val) => {
@@ -80,6 +85,70 @@ export function Step2({ study, onField }) {
   const totCur = totalRevenue(classes, false);
   const totProp = totalRevenue(classes, true);
 
+  // ─── AI suggest proposed rates ────────────────────────────────────────────
+  async function suggestRates() {
+    setAiErr(''); setAiSuggestion(null); setAiBusy(true);
+    try {
+      const propBT = budgetTotal(study.propBudget || defBudget());
+      const targetAnnualRevenue = propBT.total * 12 * 1.05; // expense + 5% margin (OR ~1.05+)
+      const data = {
+        className: sel.name || sel.id,
+        currentCustomers: nv(sel.cur.customers),
+        currentGallonsSold: nv(sel.cur.gallonsSold),
+        currentMinCharge: nv(sel.cur.minCharge),
+        currentTiers: (sel.cur.tiers || []).map(t => ({ gal: nv(t.gal), rate: nv(t.rate) })),
+        proposedCustomers: nv(sel.prop.customers) || nv(sel.cur.customers),
+        proposedGallonsSold: nv(sel.prop.gallonsSold) || nv(sel.cur.gallonsSold),
+        monthlyMHI: nv(mhi),
+        targetAnnualRevenue: Math.round(targetAnnualRevenue),
+        proposedMonthlyExpenses: propBT.total,
+      };
+      const system = `You are a water-rate consultant for the Choctaw Nation OWRM. Given a class's current rates, customer count, usage, MHI, and the system's proposed monthly expenses, propose a tiered rate structure that:
+1. Generates close to the target revenue.
+2. Keeps the bill at 5,000 gallons under 2.0% of monthly MHI (USDA/EPA affordability) and ideally under 1.5% (USDA RD grant eligibility).
+3. Uses a moderately progressive 4-6 tier structure (1k, 2k, 3k, ... gal blocks) that encourages conservation without punishing essential use.
+4. Sets a base/minimum charge that recovers fixed costs but is not excessive.
+Return STRICT JSON only — no markdown, no commentary outside JSON. Schema:
+{
+  "minCharge": number,
+  "tiers": [{"gal": number, "rate": number}, ...],
+  "explanation": "1-3 short sentences in plain English explaining the trade-offs of this proposal"
+}`;
+      const user = `CLASS: ${data.className}
+Customers: ${data.proposedCustomers}
+Total monthly gallons sold: ${data.proposedGallonsSold}
+Monthly MHI (per household): $${data.monthlyMHI || 'unknown — assume $4,000'}
+System's proposed monthly expenses: $${data.proposedMonthlyExpenses}
+Target annual revenue (across ALL classes): $${data.targetAnnualRevenue}
+This class's share of total customers should drive its share of the revenue target.
+
+Current rates for context:
+- Min charge: $${data.currentMinCharge}
+- Tiers: ${JSON.stringify(data.currentTiers)}
+
+Propose new rates for this class only.`;
+      const text = await ask({ system, user, model: MODEL_HEAVY, maxTokens: 800 });
+      // Try to extract JSON even if the model wrapped it in code fences
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('AI response did not contain JSON: ' + text.slice(0, 200));
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(parsed.tiers)) throw new Error('AI response missing tiers array');
+      setAiSuggestion(parsed);
+    } catch (e) {
+      setAiErr(e.message || String(e));
+    } finally {
+      setAiBusy(false);
+    }
+  }
+  function applyAiSuggestion() {
+    if (!aiSuggestion) return;
+    const tiers = aiSuggestion.tiers.map(t => ({ gal: nv(t.gal), rate: String(nv(t.rate)) }));
+    const newProp = { ...sel.prop, minCharge: String(nv(aiSuggestion.minCharge)), tiers };
+    onField('classes', classes.map(c => c.id === sel.id ? { ...c, prop: newProp } : c));
+    setAiSuggestion(null);
+    setTab('prop');
+  }
+
   return (
     <div className="stack">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
@@ -90,8 +159,41 @@ export function Step2({ study, onField }) {
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button className="btn b-out btn-sm" onClick={() => setShowImport(s => !s)} title="Bulk-paste classes from a spreadsheet">📋 Bulk Import</button>
           <button className="btn b-out btn-sm" onClick={copyAllCurrentToProposed} title="Copy current rates to proposed for all enabled classes">⇉ Copy All Cur→Prop</button>
+          <button
+            className="btn b-lime btn-sm"
+            onClick={suggestRates}
+            disabled={aiBusy || !hasApiKey()}
+            title={hasApiKey() ? `Use AI to suggest a tier structure for ${sel?.name || 'this class'}` : 'Add an Anthropic API key in Step 7 → Settings to enable'}
+          >
+            {aiBusy ? '✨ Thinking…' : '✨ AI Suggest Rates'}
+          </button>
         </div>
       </div>
+
+      {aiErr && <div className="al al-e">{aiErr}</div>}
+      {aiSuggestion && (
+        <div className="card" style={{ borderLeft: '4px solid var(--lime)', background: 'var(--lime-pale)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--lime-dim)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>✨ AI Proposed Rate Suggestion for {sel.name || sel.id}</div>
+              <p style={{ fontSize: 12.5, color: 'var(--text)', marginTop: 6, lineHeight: 1.6 }}>{aiSuggestion.explanation}</p>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="btn b-out btn-sm" onClick={() => setAiSuggestion(null)}>Discard</button>
+              <button className="btn b-lime btn-sm" onClick={applyAiSuggestion}>Apply to Proposed →</button>
+            </div>
+          </div>
+          <table className="dt" style={{ background: '#fff' }}>
+            <thead><tr><th>Block (gal)</th><th style={{ textAlign: 'right' }}>Rate ($/1k)</th></tr></thead>
+            <tbody>
+              <tr><td>Base / Minimum Charge</td><td style={{ textAlign: 'right' }}>{fmt.c(aiSuggestion.minCharge)}</td></tr>
+              {aiSuggestion.tiers.map((t, i) => (
+                <tr key={i}><td>{fmt.n(t.gal)}</td><td style={{ textAlign: 'right' }}>{fmt.r(t.rate)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showImport && (
         <div className="card" style={{ background: 'var(--surface)' }}>
@@ -139,7 +241,7 @@ export function Step2({ study, onField }) {
                     style={{ flex: 1, fontSize: 12, color: c.enabled ? 'var(--text)' : 'var(--dim)', cursor: 'pointer' }}
                     onClick={() => setSelId(c.id)}
                   >
-                    {c.id.startsWith('c') ? (
+                    {isCustomSlot(c.id) ? (
                       <input
                         className="inp"
                         value={c.name}
@@ -169,7 +271,7 @@ export function Step2({ study, onField }) {
           <div style={{ flex: 1 }}>
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <div style={{ fontSize: 14, color: 'var(--teal)' }}>{sel.name || (sel.id.startsWith('c') ? `Class ${sel.id.replace('c', '')}` : 'Custom Class')}</div>
+                <div style={{ fontSize: 14, color: 'var(--teal)' }}>{sel.name || (isCustomSlot(sel.id) ? `Class ${sel.id.replace('c', '')}` : 'Custom Class')}</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   {tab !== 'cmp' && (
                     <button
@@ -187,7 +289,18 @@ export function Step2({ study, onField }) {
               </div>
 
               {tab === 'cmp' ? (
-                <CompareView cls={sel} />
+                <CompareView
+                  cls={sel}
+                  mhi={mhi}
+                  onUpd={(side, path, val) => updClass(sel.id, [side, path], val)}
+                  onTier={(side, i, k, val) => {
+                    const sideKey = side; // 'cur' or 'prop'
+                    const arr = (sel[sideKey].tiers || []).map(t => ({ ...t }));
+                    while (arr.length <= i) arr.push({ gal: 1000 * (arr.length + 1), rate: '' });
+                    arr[i] = { ...arr[i], [k]: val };
+                    updClass(sel.id, [sideKey, 'tiers'], arr);
+                  }}
+                />
               ) : (
                 <>
                   <div className="g3" style={{ marginBottom: 14 }}>
@@ -304,19 +417,41 @@ export function Step2({ study, onField }) {
   );
 }
 
-function CompareView({ cls }) {
+// Compact $-prefixed number input for Compare cells
+const CmpInput = ({ value, onChange, money = false, step = '0.01' }) => (
+  <div style={{ position: 'relative' }}>
+    {money && (
+      <span style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--dim)', fontSize: 11, pointerEvents: 'none' }}>$</span>
+    )}
+    <input
+      type="number"
+      step={step}
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="0"
+      style={{
+        width: '100%',
+        padding: money ? '4px 6px 4px 16px' : '4px 6px',
+        border: '1px solid var(--border)',
+        borderRadius: 4,
+        fontFamily: 'var(--font)',
+        fontSize: 12,
+        textAlign: 'right',
+        background: '#fff',
+      }}
+    />
+  </div>
+);
+
+function CompareView({ cls, mhi, onUpd, onTier }) {
+  const hml = mhi ? calcHML({ prop: { minCharge: cls.prop?.minCharge, tiers: cls.prop?.tiers || [] } }, true, mhi) : null;
   const cur = cls.cur || {};
   const prop = cls.prop || {};
-  const fields = [
-    ['Number of Customers', cur.customers, prop.customers, fmt.n],
-    ['Monthly Gallons Sold', cur.gallonsSold, prop.gallonsSold, fmt.n],
-    ['Base / Minimum Charge', cur.minCharge, prop.minCharge, fmt.c],
-  ];
-  const tierMax = Math.max((cur.tiers || []).length, (prop.tiers || []).length);
+  const tierMax = Math.max((cur.tiers || []).length, (prop.tiers || []).length, 1);
   const tiers = [];
   for (let i = 0; i < tierMax; i++) {
     tiers.push({
-      gal: cur.tiers?.[i]?.gal ?? prop.tiers?.[i]?.gal,
+      gal: cur.tiers?.[i]?.gal ?? prop.tiers?.[i]?.gal ?? 1000 * (i + 1),
       curRate: cur.tiers?.[i]?.rate,
       propRate: prop.tiers?.[i]?.rate,
     });
@@ -329,27 +464,63 @@ function CompareView({ cls }) {
     return { gal, c, p, d: p - c };
   };
   const samples = [2000, 5000, 10000, 20000].map(billRow);
+
+  const fields = [
+    { label: 'Number of Customers', curVal: cur.customers, propVal: prop.customers, key: 'customers', money: false, step: '1' },
+    { label: 'Monthly Gallons Sold', curVal: cur.gallonsSold, propVal: prop.gallonsSold, key: 'gallonsSold', money: false, step: '100' },
+    { label: 'Base / Minimum Charge', curVal: cur.minCharge, propVal: prop.minCharge, key: 'minCharge', money: true, step: '0.01' },
+  ];
+
+  const colHeader = (text, color) => (
+    <th style={{ textAlign: 'right', color: color || 'inherit' }}>{text}</th>
+  );
+
   return (
     <div>
+      <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 10 }}>
+        Edit either column directly. The Δ column updates as you change values; the calculated income row recomputes from your latest inputs.
+      </p>
+      {hml && (
+        <div style={{ marginBottom: 12, padding: 10, background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border)' }}>
+          <div className="flb" style={{ marginBottom: 6 }}>Recommended Proposed Base Charge (% of Monthly MHI)</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn b-low btn-sm" onClick={() => onUpd('prop', 'minCharge', hml.low.toFixed(2))}>
+              Low — {fmt.c(hml.low)} <span style={{ fontSize: 10 }}>(1.5% USDA RD)</span>
+            </button>
+            <button className="btn b-med btn-sm" onClick={() => onUpd('prop', 'minCharge', hml.med.toFixed(2))}>
+              Medium — {fmt.c(hml.med)} <span style={{ fontSize: 10 }}>(2.0% benchmark)</span>
+            </button>
+            <button className="btn b-hi btn-sm" onClick={() => onUpd('prop', 'minCharge', hml.high.toFixed(2))}>
+              High — {fmt.c(hml.high)} <span style={{ fontSize: 10 }}>(2.5% EPA)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <table className="dt" style={{ marginBottom: 14 }}>
         <thead>
           <tr>
             <th>Field</th>
-            <th style={{ textAlign: 'right' }}>Current</th>
-            <th style={{ textAlign: 'right' }}>Proposed</th>
-            <th style={{ textAlign: 'right' }}>Δ</th>
+            {colHeader('Current')}
+            {colHeader('Proposed')}
+            {colHeader('Δ')}
           </tr>
         </thead>
         <tbody>
-          {fields.map(([label, c, p, f]) => {
-            const d = nv(p) - nv(c);
+          {fields.map(f => {
+            const d = nv(f.propVal) - nv(f.curVal);
+            const fmtVal = f.money ? fmt.c : fmt.n;
             return (
-              <tr key={label}>
-                <td>{label}</td>
-                <td style={{ textAlign: 'right' }}>{f(c)}</td>
-                <td style={{ textAlign: 'right' }}>{f(p)}</td>
-                <td style={{ textAlign: 'right', color: d > 0 ? 'var(--red)' : d < 0 ? 'var(--lime-dim)' : 'var(--mid)' }}>
-                  {d === 0 ? '—' : (d > 0 ? '+' : '') + f(d)}
+              <tr key={f.key}>
+                <td style={{ verticalAlign: 'middle' }}>{f.label}</td>
+                <td style={{ width: 130 }}>
+                  <CmpInput value={f.curVal} onChange={(v) => onUpd('cur', f.key, v)} money={f.money} step={f.step} />
+                </td>
+                <td style={{ width: 130 }}>
+                  <CmpInput value={f.propVal} onChange={(v) => onUpd('prop', f.key, v)} money={f.money} step={f.step} />
+                </td>
+                <td style={{ textAlign: 'right', color: d > 0 ? 'var(--red)' : d < 0 ? 'var(--lime-dim)' : 'var(--mid)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                  {d === 0 ? '—' : (d > 0 ? '+' : '') + fmtVal(d)}
                 </td>
               </tr>
             );
@@ -370,9 +541,9 @@ function CompareView({ cls }) {
         <thead>
           <tr>
             <th>Block (gal)</th>
-            <th style={{ textAlign: 'right' }}>Current ($/1k)</th>
-            <th style={{ textAlign: 'right' }}>Proposed ($/1k)</th>
-            <th style={{ textAlign: 'right' }}>Δ</th>
+            {colHeader('Current ($/1k)')}
+            {colHeader('Proposed ($/1k)')}
+            {colHeader('Δ')}
           </tr>
         </thead>
         <tbody>
@@ -380,10 +551,16 @@ function CompareView({ cls }) {
             const d = nv(t.propRate) - nv(t.curRate);
             return (
               <tr key={i}>
-                <td>{fmt.n(t.gal)}</td>
-                <td style={{ textAlign: 'right' }}>{t.curRate ? fmt.r(t.curRate) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{t.propRate ? fmt.r(t.propRate) : '—'}</td>
-                <td style={{ textAlign: 'right', color: d > 0 ? 'var(--red)' : d < 0 ? 'var(--lime-dim)' : 'var(--mid)' }}>
+                <td style={{ width: 100 }}>
+                  <CmpInput value={t.gal} onChange={(v) => onTier('cur', i, 'gal', Number(v))} step="1000" />
+                </td>
+                <td style={{ width: 130 }}>
+                  <CmpInput value={t.curRate} onChange={(v) => onTier('cur', i, 'rate', v)} money step="0.01" />
+                </td>
+                <td style={{ width: 130 }}>
+                  <CmpInput value={t.propRate} onChange={(v) => onTier('prop', i, 'rate', v)} money step="0.01" />
+                </td>
+                <td style={{ textAlign: 'right', color: d > 0 ? 'var(--red)' : d < 0 ? 'var(--lime-dim)' : 'var(--mid)', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {d === 0 ? '—' : (d > 0 ? '+' : '') + fmt.r(d)}
                 </td>
               </tr>
@@ -392,15 +569,15 @@ function CompareView({ cls }) {
         </tbody>
       </table>
 
-      <div className="sh">Sample Customer Bills</div>
+      <div className="sh">Sample Customer Bills (calculated)</div>
       <table className="dt">
         <thead>
           <tr>
             <th>Usage</th>
-            <th style={{ textAlign: 'right' }}>Bill (Current)</th>
-            <th style={{ textAlign: 'right' }}>Bill (Proposed)</th>
-            <th style={{ textAlign: 'right' }}>Δ</th>
-            <th style={{ textAlign: 'right' }}>%</th>
+            {colHeader('Bill (Current)')}
+            {colHeader('Bill (Proposed)')}
+            {colHeader('Δ')}
+            {colHeader('%')}
           </tr>
         </thead>
         <tbody>
