@@ -49,6 +49,25 @@ npm run build:single
 - **Print-ready report** (uses CSS print media)
 - **Import/Export studies** as JSON
 
+## Automated builds (GitHub Actions)
+
+Every push to `main` or a `claude/**` branch triggers `.github/workflows/build.yml`,
+which produces two downloadable artifacts on the run's summary page:
+
+- `water-rate-study-tool-single-file` — the standalone `index.html`
+- `water-rate-study-tool-dist` — the chunked `dist/` for normal hosting
+
+To bake an Anthropic API key into the artifacts, add it as a repo secret:
+
+> **Settings → Secrets and variables → Actions → New repository secret**
+> Name: `VITE_ANTHROPIC_KEY`  Value: `sk-ant-...`
+
+The workflow injects it at build time. The key is encrypted at rest, isn't
+visible in workflow logs, and isn't readable from forked-PR runs.
+
+You can also trigger a build manually from the **Actions** tab via
+**Run workflow**.
+
 ## AI Analysis
 
 Step 7 calls the Anthropic API directly from the browser using the
