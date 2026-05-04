@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { defBudget } from '../lib/state.js';
 import { SEAL } from '../lib/seal.js';
 import { VER } from '../lib/constants.js';
@@ -5,6 +6,7 @@ import {
   budgetTotal, totalRevenue, costPer1000, calc5Yr,
   affordabilityIndex, debtToIncome, nv, fmt
 } from '../lib/calc.js';
+import { buildReport, safeFileName } from '../lib/exporters/data.js';
 
 export function Step8({ study, onField }) {
   const classes = study.classes || [];
@@ -29,15 +31,56 @@ export function Step8({ study, onField }) {
   const proj = calc5Yr(classes, study.curBudget || defBudget(), study.propBudget || defBudget(), study.forecast || {});
   const expBase = propBT.total * 12;
 
+  const [busy, setBusy] = useState('');
+  const [exportErr, setExportErr] = useState('');
+
+  const baseName = safeFileName(study.systemInfo?.systemName || study.name || 'water-rate-study');
+  const yearTag = study.systemInfo?.studyYear || new Date().getFullYear();
+
+  async function doExport(kind) {
+    setExportErr('');
+    setBusy(kind);
+    try {
+      const report = buildReport(study);
+      if (kind === 'pdf') {
+        const { exportPDF } = await import('../lib/exporters/pdf.js');
+        await exportPDF(report, `${baseName}-${yearTag}-rate-study.pdf`);
+      } else if (kind === 'docx') {
+        const { exportDocx } = await import('../lib/exporters/docx.js');
+        // Pre-load the seal as bytes (docx ImageRun expects Uint8Array)
+        let sealBytes = null;
+        try {
+          const r = await fetch(SEAL);
+          sealBytes = new Uint8Array(await r.arrayBuffer());
+        } catch { /* skip seal */ }
+        await exportDocx(report, `${baseName}-${yearTag}-rate-study.docx`, sealBytes);
+      }
+    } catch (e) {
+      console.error(e);
+      setExportErr(`${kind.toUpperCase()} export failed: ${e.message || e}`);
+    } finally {
+      setBusy('');
+    }
+  }
+
   return (
     <div className="stack">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ fontSize: 15, color: 'var(--teal)', marginBottom: 3 }}>Final Report</h2>
-          <p style={{ color: 'var(--mid)', fontSize: 12 }}>Board-ready report matching the CNO Water Rate Study — Final Report format. Print for submission.</p>
+          <p style={{ color: 'var(--mid)', fontSize: 12 }}>Board-ready report. Export to PDF for distribution, or to Word (.docx) to edit before submission.</p>
         </div>
-        <button className="btn b-teal no-print" onClick={() => window.print()}>🖨 Print Report</button>
+        <div className="no-print" style={{ display: 'flex', gap: 6 }}>
+          <button className="btn b-out btn-sm" onClick={() => doExport('docx')} disabled={!!busy}>
+            {busy === 'docx' ? 'Building…' : '📝 Export Word'}
+          </button>
+          <button className="btn b-lime btn-sm" onClick={() => doExport('pdf')} disabled={!!busy}>
+            {busy === 'pdf' ? 'Building…' : '📄 Export PDF'}
+          </button>
+          <button className="btn b-teal btn-sm" onClick={() => window.print()}>🖨 Print</button>
+        </div>
       </div>
+      {exportErr && <div className="al al-e no-print">{exportErr}</div>}
       <div className="print-only" style={{ marginBottom: 16, paddingBottom: 12, borderBottom: '2px solid #1E3D3B' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8 }}>
           <img src={SEAL} alt="Seal" style={{ width: 52, height: 52 }} />

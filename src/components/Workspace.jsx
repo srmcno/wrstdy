@@ -1,6 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { STEPS } from '../lib/constants.js';
 import { fmt } from '../lib/calc.js';
+
+// Compact "saved 3s ago" / "saved just now" indicator that re-renders every 10s.
+function SavedAgo({ iso }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 10_000);
+    return () => clearInterval(t);
+  }, []);
+  if (!iso) return null;
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  let label;
+  if (seconds < 5) label = 'just now';
+  else if (seconds < 60) label = `${seconds}s ago`;
+  else if (seconds < 3600) label = `${Math.round(seconds / 60)}m ago`;
+  else if (seconds < 86400) label = `${Math.round(seconds / 3600)}h ago`;
+  else label = fmt.short(iso);
+  return (
+    <span style={{ fontSize: 10, color: 'var(--lime-dim)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--lime-dim)' }} /> Saved {label}
+    </span>
+  );
+}
 import { Step1 } from '../steps/Step1.jsx';
 import { Step2 } from '../steps/Step2.jsx';
 import { Step3 } from '../steps/Step3.jsx';
@@ -23,10 +45,12 @@ export function Workspace({ study, onUpdate, onDelete }) {
       <div className="ws-bar no-print">
         <div style={{ flex: 1 }}>
           <div className="ws-t">{study.name}</div>
-          <div className="ws-s">
-            {study.systemInfo.systemName || 'No system'}
-            {study.systemInfo.pwsId ? ` — ${study.systemInfo.pwsId}` : ''}
-            {' — Saved '}{fmt.short(study.updatedAt)}
+          <div className="ws-s" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>
+              {study.systemInfo.systemName || 'No system'}
+              {study.systemInfo.pwsId ? ` — ${study.systemInfo.pwsId}` : ''}
+            </span>
+            <SavedAgo iso={study.updatedAt} />
           </div>
         </div>
         <span className={'bs ' + (study.status === 'complete' ? 'bsc' : study.status === 'in-progress' ? 'bsp' : 'bsd')}>
