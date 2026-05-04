@@ -52,10 +52,27 @@ npm run build:single
 ## AI Analysis
 
 Step 7 calls the Anthropic API directly from the browser using the
-`anthropic-dangerous-direct-browser-access` header. The user supplies their own
-API key via the Settings panel; the key is stored only in their browser's
-`localStorage`. For production deployment to non-staff users, replace this with
-a server-side proxy.
+`anthropic-dangerous-direct-browser-access` header.
+
+The key can come from two places (in priority order):
+
+1. **A per-device key** entered via the Step 7 ⚙ Settings panel — saved to
+   `localStorage` only on that browser.
+2. **A build-time key** in a `VITE_ANTHROPIC_KEY` env var — baked into the
+   bundle so staff don't have to enter anything.
+
+To bake in a key:
+
+```bash
+echo 'VITE_ANTHROPIC_KEY=sk-ant-...' > .env.local
+npm run build           # or npm run build:single
+```
+
+⚠️ **Anyone with access to the built `dist/` (or `dist-single/index.html`)
+can extract that key.** Only do this for builds distributed to trusted OWRM
+staff on internal infrastructure. For external/public deployment, leave the
+env var unset and put a server-side proxy in front of the Anthropic API
+instead.
 
 ## Data
 
