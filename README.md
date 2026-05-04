@@ -23,12 +23,18 @@ Open http://localhost:5173.
 
 ## Build
 
+Two build modes are available:
+
 ```bash
+# Standard chunked build → dist/  (deploy to any web server)
 npm run build
 npm run preview
-```
 
-The `dist/` output is fully static — deploy on any web server.
+# Single self-contained HTML → dist-single/index.html
+# (one ~585KB file with all JS/CSS/images inlined; works via file://,
+#  email attachment, USB stick, or dropping into a SharePoint folder)
+npm run build:single
+```
 
 ## Features
 
