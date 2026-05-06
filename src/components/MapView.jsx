@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CHOCTAW_CENTER, CHOCTAW_ZOOM, KNOWN_SYSTEMS } from '../lib/choctaw-boundary.js';
 import { statusMeta } from '../lib/status.js';
+import { defer } from '../lib/defer.js';
 
 // Lazy-loads Leaflet so it doesn't bloat the initial bundle.
 async function loadLeaflet() {
@@ -139,8 +140,11 @@ export function MapView({ studies, onSelect, onCreateFromKnown }) {
         </div>`;
         marker.bindPopup(popupHtml);
         marker.on('popupopen', (e) => {
-          const btn = e.popup._contentNode.querySelector('.map-known-btn');
-          if (btn) btn.onclick = () => onCreateFromKnown?.(s);
+          const btn = e.popup._contentNode?.querySelector?.('.map-known-btn');
+          // Defer the navigation: setActiveId in App synchronously unmounts
+          // MapView (and runs map.remove()) which would tear down the popup
+          // DOM mid-click and crash Leaflet's event dispatcher.
+          if (btn) btn.onclick = () => defer(() => onCreateFromKnown?.(s));
         });
       });
 
@@ -162,8 +166,8 @@ export function MapView({ studies, onSelect, onCreateFromKnown }) {
         </div>`;
         marker.bindPopup(popupHtml);
         marker.on('popupopen', (e) => {
-          const btn = e.popup._contentNode.querySelector('.map-open-btn');
-          if (btn) btn.onclick = () => onSelect?.(s.id);
+          const btn = e.popup._contentNode?.querySelector?.('.map-open-btn');
+          if (btn) btn.onclick = () => defer(() => onSelect?.(s.id));
         });
         studyMarkers.push(marker);
       });
@@ -180,7 +184,7 @@ export function MapView({ studies, onSelect, onCreateFromKnown }) {
     return () => {
       cancelled = true;
       if (mapRef.current) {
-        mapRef.current.remove();
+        try { mapRef.current.remove(); } catch (err) { console.warn('Leaflet teardown threw', err); }
         mapRef.current = null;
       }
       layersRef.current = { districts: null, labels: null };

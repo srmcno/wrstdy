@@ -8,6 +8,7 @@ import {
 import { chat, KEY_STORAGE, BUILD_KEY, AI_PROXY_URL, USE_AI_PROXY, safeGet, safeSet } from '../lib/ai.js';
 import { ConfirmModal } from '../components/ConfirmModal.jsx';
 import { startAiJob, isAiBusy, subscribeAiJobs } from '../lib/ai-jobs.js';
+import { defer } from '../lib/defer.js';
 
 const SYSTEM_PROMPT = `You are a senior financial analyst for the Choctaw Nation Office of Water Resource Management (OWRM). You write rate-study analyses for tribal public water systems whose boards include non-experts.
 
@@ -96,6 +97,8 @@ export function Step7({ study, onField }) {
   const usingBuildKey = !USE_AI_PROXY && !safeGet(KEY_STORAGE) && !!BUILD_KEY;
   const [followUp, setFollowUp] = useState('');
   const scrollRef = useRef(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // The AI conversation history. Each entry: { role: 'user' | 'assistant', content: string }.
   // We store the full history on the study so it persists across sessions.
@@ -144,7 +147,7 @@ export function Step7({ study, onField }) {
         });
       } catch (e) {
         console.error('AI analysis failed', e);
-        setErr(e.message || String(e));
+        if (mountedRef.current) setErr(e.message || String(e));
       }
     });
   }
@@ -168,16 +171,20 @@ export function Step7({ study, onField }) {
         });
       } catch (e) {
         console.error('AI follow-up failed', e);
-        setErr(e.message || String(e));
-        // Restore the unsent text so the user can retry without retyping
-        setFollowUp(text);
+        if (mountedRef.current) {
+          setErr(e.message || String(e));
+          // Restore the unsent text so the user can retry without retyping
+          setFollowUp(text);
+        }
       }
     });
   }
 
   function clearConversation() {
-    onField({ aiHistory: [], aiAnalysis: { content: '', generatedAt: '' } });
+    // Close the modal first, then defer the destructive write so the modal's
+    // click event finishes propagating before the parent re-render cascade.
     setConfirmClear(false);
+    defer(() => onField({ aiHistory: [], aiAnalysis: { content: '', generatedAt: '' } }));
   }
 
   // The first user message is huge (full data dump). Hide it from the UI.

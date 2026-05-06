@@ -55,22 +55,23 @@ export function Workspace({ study, onUpdate, onDelete }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="ws-bar no-print">
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div className="ws-t">{study.name}</div>
-          <div className="ws-s" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div className="ws-s">
             <span>
               {study.systemInfo.systemName || 'No system'}
               {study.systemInfo.pwsId ? ` — ${study.systemInfo.pwsId}` : ''}
             </span>
-            <SavedAgo iso={study.updatedAt} />
           </div>
         </div>
+        <SavedAgo iso={study.updatedAt} />
         <span className={'bs ' + statusMeta(study.status).badgeClass}>
           {statusMeta(study.status).label}
         </span>
         <button
           className="btn b-del btn-sm"
           onClick={() => setConfirmDelete(true)}
+          aria-label={`Delete study ${study.name}`}
         >
           Delete
         </button>

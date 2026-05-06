@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { defaultClasses, defaultTiers, defBudget } from '../lib/state.js';
 import { nv, classMonthlyIncome, totalRevenue, fmt, calcBill, calcHML, budgetTotal } from '../lib/calc.js';
 import { F, $I } from '../components/atoms.jsx';
@@ -67,6 +67,8 @@ export function Step2({ study, onField }) {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { explanation, tiers, minCharge }
   const [aiErr, setAiErr] = useState('');
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   const sel = classes.find(c => c.id === selId) || classes[0];
 
   const updClass = (id, path, val) => {
@@ -172,15 +174,16 @@ Current rates for context:
 Propose new rates for this class only.`;
       const text = await ask({ system, user, model: MODEL_HEAVY, maxTokens: 800 });
       // Try to extract JSON even if the model wrapped it in code fences
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('AI response did not contain JSON: ' + text.slice(0, 200));
+      const jsonMatch = (typeof text === 'string' ? text : '').match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('AI response did not contain JSON: ' + (text || '').slice(0, 200));
       const parsed = JSON.parse(jsonMatch[0]);
       if (!Array.isArray(parsed.tiers)) throw new Error('AI response missing tiers array');
-      setAiSuggestion(parsed);
+      if (mountedRef.current) setAiSuggestion(parsed);
     } catch (e) {
-      setAiErr(e.message || String(e));
+      console.error('AI suggest rates failed', e);
+      if (mountedRef.current) setAiErr(e.message || String(e));
     } finally {
-      setAiBusy(false);
+      if (mountedRef.current) setAiBusy(false);
     }
   }
   function applyAiSuggestion() {
@@ -197,7 +200,7 @@ Propose new rates for this class only.`;
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div>
           <h2 style={{ fontSize: 15, color: 'var(--teal)', marginBottom: 3 }}>Customer Classes & Rates</h2>
-          <p style={{ color: 'var(--mid)', fontSize: 12 }}>Enter rates in $/1,000 gallons per block. Cumulative bill amounts auto-calculate at each tier level.</p>
+          <p style={{ color: 'var(--mid)', fontSize: 12 }}>Tier rates are entered in dollars per 1,000 gallons within that block. Each block applies only to gallons used in that range — cumulative bill amounts auto-calculate as usage increases.</p>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
           <button className="btn b-out btn-sm" onClick={() => setShowImport(s => !s)} title="Bulk-paste classes from a spreadsheet">📋 Bulk Import</button>

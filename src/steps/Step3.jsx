@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { budgetTotal, totalRevenue, nv, fmt } from '../lib/calc.js';
 import { defBudget } from '../lib/state.js';
 import { BudgetSection } from '../components/BudgetSection.jsx';
@@ -38,7 +38,8 @@ const SECTIONS = [
     { k: 'bank', l: 'Bank / Credit Cards' }, { k: 'other', l: 'Other' }
   ] },
   { title: 'Other Expenses', section: 'oth', fields: [
-    { k: 'depreciation', l: 'Depreciation' }, { k: 'longRange', l: 'Long Range Plan' },
+    { k: 'depreciation', l: 'Depreciation', h: 'Monthly set-aside for equipment replacement' },
+    { k: 'longRange', l: 'Long Range Plan', h: 'Capital improvements planned 5+ years out' },
     { k: 'insurance', l: 'Insurance' }, { k: 'membership', l: 'Membership Dues' },
     { k: 'purchasedWater', l: 'Purchased Water' }, { k: 'attorney', l: 'Attorney' },
     { k: 'engineer', l: 'Engineer / Consultant' }, { k: 'other', l: 'Other' }
@@ -74,6 +75,8 @@ export function Step3({ study, onField }) {
   const [aiReview, setAiReview] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState('');
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   async function reviewBudget() {
     setAiErr(''); setAiReview(''); setAiBusy(true);
     try {
@@ -98,11 +101,12 @@ Total: $${budgetTotal(propB).total.toFixed(2)}/mo
 
 Flag concerns and missing categories.`;
       const text = await ask({ system: sys, user, maxTokens: 800 });
-      setAiReview(text);
+      if (mountedRef.current) setAiReview(typeof text === 'string' ? text : String(text || ''));
     } catch (e) {
-      setAiErr(e.message || String(e));
+      console.error('AI budget review failed', e);
+      if (mountedRef.current) setAiErr(e.message || String(e));
     } finally {
-      setAiBusy(false);
+      if (mountedRef.current) setAiBusy(false);
     }
   }
 

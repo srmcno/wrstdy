@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { defer } from '../lib/defer.js';
 
 export function ConfirmModal({
   title,
@@ -12,21 +13,29 @@ export function ConfirmModal({
   const cancelRef = useRef(null);
   const confirmRef = useRef(null);
 
+  // Defer the confirm action so the modal's click event finishes propagating
+  // before the parent state mutation tears the modal subtree down. Without
+  // this, destructive confirms whose callbacks run sync state updates against
+  // the App-level store can throw mid-event and surface as ErrorBoundary.
+  const handleConfirm = () => defer(onConfirm);
+  const handleCancel = () => defer(onCancel);
+
   useEffect(() => {
     cancelRef.current?.focus();
     const onKey = (e) => {
-      if (e.key === 'Escape') { onCancel(); return; }
+      if (e.key === 'Escape') { handleCancel(); return; }
       if (e.key === 'Tab') {
         const a = cancelRef.current, b = confirmRef.current;
         if (!a || !b) return;
         if (e.shiftKey && document.activeElement === a) { e.preventDefault(); b.focus(); }
         else if (!e.shiftKey && document.activeElement === b) { e.preventDefault(); a.focus(); }
       } else if (e.key === 'Enter' && document.activeElement === confirmRef.current) {
-        onConfirm();
+        handleConfirm();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onCancel, onConfirm]);
 
   return (
@@ -35,14 +44,14 @@ export function ConfirmModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}
     >
       <div className="modal" style={{ maxWidth: 420 }}>
         <h3 id="confirm-title" style={{ fontSize: 15, color: 'var(--teal)' }}>{title}</h3>
         <div style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55 }}>{message}</div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
-          <button ref={cancelRef} className="btn b-out" onClick={onCancel}>{cancelLabel}</button>
-          <button ref={confirmRef} className={'btn ' + (destructive ? 'b-del' : 'b-lime')} onClick={onConfirm}>{confirmLabel}</button>
+          <button ref={cancelRef} className="btn b-out" onClick={handleCancel}>{cancelLabel}</button>
+          <button ref={confirmRef} className={'btn ' + (destructive ? 'b-del' : 'b-lime')} onClick={handleConfirm}>{confirmLabel}</button>
         </div>
       </div>
     </div>

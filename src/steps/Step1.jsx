@@ -18,8 +18,10 @@ export function Step1({ study, onField }) {
   const [geoCooldown, setGeoCooldown] = useState(0);
   const geocodeTimerRef = useRef(null);
   const nextGeocodeAtRef = useRef(0);
+  const mountedRef = useRef(true);
 
   useEffect(() => () => {
+    mountedRef.current = false;
     if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
   }, []);
 
@@ -54,7 +56,7 @@ export function Step1({ study, onField }) {
       if (!addr) throw new Error('Enter an address or system name first (e.g. "Antlers, OK" or the system name).');
       const r = await geocode(addr, { county: si.county });
       usiMany({ latitude: r.latitude, longitude: r.longitude });
-      setGeoMsg(`✓ Found: ${r.displayName.slice(0, 80)}`);
+      if (mountedRef.current) setGeoMsg(`✓ Found: ${r.displayName.slice(0, 80)}`);
     } catch (e) {
       const msg = e.message || String(e);
       const hint = /not found|no result/i.test(msg)
@@ -62,9 +64,9 @@ export function Step1({ study, onField }) {
         : /network|fetch|429|rate/i.test(msg)
         ? ' Check your internet connection or wait a moment before retrying.'
         : '';
-      setGeoMsg('✗ ' + msg + hint);
+      if (mountedRef.current) setGeoMsg('✗ ' + msg + hint);
     } finally {
-      setGeoBusy(false);
+      if (mountedRef.current) setGeoBusy(false);
     }
   }
 
@@ -88,25 +90,33 @@ Return STRICT JSON only — no markdown, no commentary outside the JSON. Schema:
 County: ${si.county || '(not provided)'}
 State: Oklahoma`;
       const text = await ask({ system: sysPrompt, user, maxTokens: 600 });
-      const m = text.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error('AI response was not JSON: ' + text.slice(0, 200));
+      const m = (typeof text === 'string' ? text : '').match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('AI response was not JSON: ' + (text || '').slice(0, 200));
       const j = JSON.parse(m[0]);
-      const patch = {};
-      if (j.pwsId && !si.pwsId) patch.pwsId = j.pwsId;
-      if (j.sourceType) patch.sourceType = j.sourceType;
-      if (j.systemType) patch.systemType = j.systemType;
-      if (j.populationServed && !si.populationServed) patch.populationServed = j.populationServed;
-      if (j.address && !si.address) patch.address = j.address;
-      if (j.waterBodySource && !si.waterBodySource) patch.waterBodySource = j.waterBodySource;
-      usiMany(patch);
+      const siPatch = {};
+      if (j.pwsId && !si.pwsId) siPatch.pwsId = String(j.pwsId);
+      if (j.sourceType) siPatch.sourceType = String(j.sourceType);
+      if (j.systemType) siPatch.systemType = String(j.systemType);
+      if (j.populationServed && !si.populationServed) siPatch.populationServed = String(j.populationServed);
+      if (j.address && !si.address) siPatch.address = String(j.address);
+      if (j.waterBodySource && !si.waterBodySource) siPatch.waterBodySource = String(j.waterBodySource);
+      // Combine systemInfo + demographics into a SINGLE patch so App's setStudies
+      // commits both fields in one render. Two sequential onField calls across
+      // an `await` boundary in React 18 don't auto-batch reliably and can
+      // cascade re-renders that race with this function's trailing state writes.
+      const patch = { systemInfo: { ...si, ...siPatch } };
       if (j.monthlyMHI && !dm.medianMonthlyHHI) {
-        onField('demographics', { ...dm, medianMonthlyHHI: String(j.monthlyMHI) });
+        patch.demographics = { ...dm, medianMonthlyHHI: String(j.monthlyMHI) };
       }
-      setAiMsg(`✓ Filled blank fields with AI estimates. ${j.notes || ''} Verify before publishing.`);
+      onField(patch);
+      if (mountedRef.current) {
+        setAiMsg(`✓ Filled blank fields with AI estimates. ${j.notes || ''} Verify before publishing.`);
+      }
     } catch (e) {
-      setAiMsg('✗ ' + (e.message || String(e)));
+      console.error('AI estimate failed', e);
+      if (mountedRef.current) setAiMsg('✗ ' + (e.message || String(e)));
     } finally {
-      setAiBusy(false);
+      if (mountedRef.current) setAiBusy(false);
     }
   }
   return (

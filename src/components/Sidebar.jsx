@@ -20,13 +20,16 @@ export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, o
         {studies.length === 0
           ? <div className="sb-em">No studies yet.<br />Create one to begin.</div>
           : studies.map(s => (
-            <div
+            <button
+              type="button"
               key={s.id}
               className={'sb-it' + (s.id === activeId ? ' on' : '')}
               onClick={() => onSelect(s.id)}
+              aria-current={s.id === activeId ? 'true' : undefined}
+              aria-label={`Open ${s.name}${s.systemInfo?.systemName ? ', ' + s.systemInfo.systemName : ''}, status ${statusMeta(s.status).label}`}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-                <div className="sb-nm" style={{ flex: 1 }}>{s.name}</div>
+                <div className="sb-nm" style={{ flex: 1, textAlign: 'left' }}>{s.name}</div>
                 <span
                   className={'badge ' + statusMeta(s.status).sidebarClass}
                   style={{ flexShrink: 0 }}
@@ -34,10 +37,10 @@ export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, o
                   {statusMeta(s.status).label}
                 </span>
               </div>
-              <div className="sb-sb">{s.systemInfo?.systemName || 'No system assigned'}</div>
-              {s.systemInfo?.county && <div className="sb-sb">{s.systemInfo.county} County</div>}
-              <div className="sb-dt">Updated {fmt.short(s.updatedAt)}</div>
-            </div>
+              <div className="sb-sb" style={{ textAlign: 'left' }}>{s.systemInfo?.systemName || 'No system assigned'}</div>
+              {s.systemInfo?.county && <div className="sb-sb" style={{ textAlign: 'left' }}>{s.systemInfo.county} County</div>}
+              <div className="sb-dt" style={{ textAlign: 'left' }}>Updated {fmt.short(s.updatedAt)}</div>
+            </button>
           ))}
       </div>
       <div className="sb-ft">
