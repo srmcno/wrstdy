@@ -2,7 +2,7 @@
 // and DOCX exporters so the two outputs always agree on numbers.
 
 import { defBudget } from '../state.js';
-import { scenarioAdjustmentsForClasses } from '../scenarios.js';
+import { scenarioForClasses } from '../scenarios.js';
 import {
   budgetTotal, totalRevenue, classMonthlyIncome,
   affordabilityIndex, debtToIncome, baseCoverage, operatingRatio,
@@ -67,14 +67,18 @@ export function buildReport(study) {
     ['Other', curBT.oth, propBT.oth],
   ].filter(r => r[1] > 0 || r[2] > 0).map(([label, cur, prop]) => ({ label, cur, prop, delta: prop - cur }));
 
-  const scenarioAdjustments = scenarioAdjustmentsForClasses(classes, study.activeScenario || {});
+  const activeScenario = scenarioForClasses(classes, study.activeScenario || {});
   const scenarioRows = classes.filter(c => c.enabled).map(c => {
     const base = classMonthlyIncome(c, true).monthly;
-    const multiplier = scenarioAdjustments[c.id] ?? 1;
-    const monthly = base * multiplier;
+    const rateBasis = activeScenario.rateBasis[c.id] === 'current' ? 'current' : 'proposed';
+    const scenarioBase = classMonthlyIncome(c, rateBasis === 'proposed').monthly;
+    const multiplier = activeScenario.adjustments[c.id] ?? 1;
+    const monthly = scenarioBase * multiplier;
     return {
       name: c.name || c.id,
       base,
+      rateBasis,
+      scenarioBase,
       multiplier,
       monthly,
       delta: monthly - base,
@@ -124,8 +128,9 @@ export function buildReport(study) {
     expCats,
     fiveYearOutlook,
     scenario: {
-      label: study.activeScenario?.label || 'Custom',
-      adjustments: scenarioAdjustments,
+      label: activeScenario.label,
+      adjustments: activeScenario.adjustments,
+      rateBasis: activeScenario.rateBasis,
       rows: scenarioRows,
       monthlyRevenue: scenarioMonthlyRevenue,
       monthlyExpenses: propBT.total,

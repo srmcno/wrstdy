@@ -510,10 +510,11 @@ export async function exportPDF(report, filename) {
     y += 2;
     autoTable(doc, {
       startY: y,
-      head: [['Class', 'Proposed (Base)', 'Multiplier', 'Scenario Mo.', 'vs. Proposed']],
+      head: [['Class', 'Proposed (Base)', 'Rate Basis', 'Multiplier', 'Scenario Mo.', 'vs. Proposed']],
       body: report.scenario.rows.map(r => [
         r.name,
         fmt.c(r.base),
+        r.rateBasis === 'current' ? 'Current rates' : 'Proposed rates',
         `${r.multiplier.toFixed(2)}x`,
         fmt.c(r.monthly),
         (r.delta >= 0 ? '+' : '') + fmt.c(r.delta),
@@ -522,13 +523,14 @@ export async function exportPDF(report, filename) {
         'Total',
         fmt.c(report.revProp.monthly),
         '',
+        '',
         fmt.c(report.scenario.monthlyRevenue),
         (report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed),
       ]],
       styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
       headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
       footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
-      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
       margin: { left: 15, right: 15 },
     });
     y = doc.lastAutoTable.finalY + 8;

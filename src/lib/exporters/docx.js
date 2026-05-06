@@ -314,12 +314,13 @@ export async function exportDocx(report, filename, sealUint8) {
     children.push(buildTable(
       [
         { text: 'Class' }, { text: 'Proposed (Base)', align: AlignmentType.RIGHT },
-        { text: 'Multiplier', align: AlignmentType.RIGHT }, { text: 'Scenario Mo.', align: AlignmentType.RIGHT },
-        { text: 'vs. Proposed', align: AlignmentType.RIGHT },
+        { text: 'Rate Basis', align: AlignmentType.RIGHT }, { text: 'Multiplier', align: AlignmentType.RIGHT },
+        { text: 'Scenario Mo.', align: AlignmentType.RIGHT }, { text: 'vs. Proposed', align: AlignmentType.RIGHT },
       ],
       report.scenario.rows.map(r => [
         r.name,
         { text: fmt.c(r.base), align: AlignmentType.RIGHT },
+        { text: r.rateBasis === 'current' ? 'Current rates' : 'Proposed rates', align: AlignmentType.RIGHT },
         { text: `${r.multiplier.toFixed(2)}x`, align: AlignmentType.RIGHT },
         { text: fmt.c(r.monthly), align: AlignmentType.RIGHT },
         { text: (r.delta >= 0 ? '+' : '') + fmt.c(r.delta), align: AlignmentType.RIGHT, color: r.delta >= 0 ? GREEN_DARK : RED },
@@ -327,6 +328,7 @@ export async function exportDocx(report, filename, sealUint8) {
       [
         'Total',
         fmt.c(report.revProp.monthly),
+        '',
         '',
         fmt.c(report.scenario.monthlyRevenue),
         (report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed),
