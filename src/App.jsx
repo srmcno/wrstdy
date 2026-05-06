@@ -1,30 +1,55 @@
 import { useState, useEffect, useRef } from 'react';
 import { VER } from './lib/constants.js';
-import { loadDB, saveDB } from './lib/state.js';
+import { loadDB, saveDB, onSaveStatus } from './lib/state.js';
 import { Header } from './components/Header.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
 import { Dashboard } from './components/Dashboard.jsx';
 import { Workspace } from './components/Workspace.jsx';
 import { NewStudyModal } from './components/NewStudyModal.jsx';
+import { ToastHost, pushToast } from './components/Toasts.jsx';
 
 export default function App() {
   const [studies, setStudies] = useState(() => loadDB());
   const [activeId, setActiveId] = useState(null);
   const [showNew, setShowNew] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileRef = useRef(null);
   const active = studies.find(s => s.id === activeId) || null;
 
   useEffect(() => saveDB(studies), [studies]);
 
+  // Surface localStorage failures (quota exceeded, opaque origin, disabled
+  // storage) so users know their work didn't persist.
+  useEffect(() => {
+    let warned = false;
+    return onSaveStatus((status, err) => {
+      if (status === 'error' && !warned) {
+        warned = true;
+        pushToast(
+          'Could not save changes — browser storage is full or disabled. Use "Export Study" to back up your work.',
+          { kind: 'err', duration: 0 },
+        );
+        console.error('saveDB failed', err);
+      }
+      if (status === 'ok') warned = false;
+    });
+  }, []);
+
+  // Close mobile sidebar when a study is selected
+  useEffect(() => { setSidebarOpen(false); }, [activeId]);
+
   const create = (s) => {
     setStudies(p => [s, ...p]);
     setActiveId(s.id);
     setShowNew(false);
+    pushToast(`Created "${s.name}"`);
   };
   const update = (s) => setStudies(p => p.map(x => x.id === s.id ? s : x));
   const del = (id) => {
+    const s = studies.find(x => x.id === id);
     setStudies(p => p.filter(x => x.id !== id));
     if (activeId === id) setActiveId(null);
+    if (s) pushToast(`Deleted "${s.name}"`, { kind: 'warn' });
   };
 
   function exportStudy(id) {
@@ -37,9 +62,11 @@ export default function App() {
     const a = document.createElement('a');
     a.href = url;
     const safe = (s?.systemInfo?.systemName || s?.name || 'all-studies').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-    a.download = `wrs-${safe}-${new Date().getFullYear()}.json`;
+    const filename = `wrs-${safe}-${new Date().getFullYear()}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    pushToast(`Exported ${filename}`);
   }
 
   function importStudy(e) {
@@ -50,18 +77,23 @@ export default function App() {
       try {
         const d = JSON.parse(ev.target.result);
         const arr = d.studies || (d.study ? [d.study] : null);
-        if (!arr) { alert('Invalid study file.'); return; }
+        if (!arr) {
+          pushToast('Invalid study file — missing "study" or "studies" key.', { kind: 'err' });
+          return;
+        }
         const imp = arr.map(s => ({
           ...s,
           id: crypto.randomUUID(),
           name: s.name + ' (Imported)',
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         }));
         setStudies(p => [...imp, ...p]);
         if (imp.length > 0) setActiveId(imp[0].id);
+        pushToast(`Imported ${imp.length} stud${imp.length === 1 ? 'y' : 'ies'}`);
         e.target.value = '';
-      } catch {
-        alert('Could not parse file.');
+      } catch (err) {
+        console.error(err);
+        pushToast('Could not parse file. Expected a JSON file exported from this tool.', { kind: 'err' });
       }
     };
     r.readAsText(file);
@@ -69,8 +101,9 @@ export default function App() {
 
   return (
     <>
-      <Header />
+      <Header onMenuToggle={() => setSidebarOpen(o => !o)} />
       <div className="row">
+        <div className={'sb-backdrop' + (sidebarOpen ? ' open' : '')} onClick={() => setSidebarOpen(false)} />
         <Sidebar
           studies={studies}
           activeId={activeId}
@@ -79,6 +112,7 @@ export default function App() {
           onImportFile={() => fileRef.current?.click()}
           onExport={exportStudy}
           onHome={() => setActiveId(null)}
+          mobileOpen={sidebarOpen}
         />
         <main className="main">
           {active
@@ -95,6 +129,7 @@ export default function App() {
         style={{ display: 'none' }}
         onChange={importStudy}
       />
+      <ToastHost />
     </>
   );
 }

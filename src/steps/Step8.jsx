@@ -8,6 +8,7 @@ import {
 } from '../lib/calc.js';
 import { buildReport, safeFileName } from '../lib/exporters/data.js';
 import { statusMeta } from '../lib/status.js';
+import { pushToast } from '../components/Toasts.jsx';
 
 export function Step8({ study, onField }) {
   const classes = study.classes || [];
@@ -47,12 +48,15 @@ export function Step8({ study, onField }) {
   async function doExport(kind) {
     setExportErr('');
     setBusy(kind);
+    let filename = '';
     try {
       const report = buildReport(study);
       if (kind === 'pdf') {
+        filename = `${baseName}-${yearTag}-rate-study.pdf`;
         const { exportPDF } = await import('../lib/exporters/pdf.js');
-        await exportPDF(report, `${baseName}-${yearTag}-rate-study.pdf`);
+        await exportPDF(report, filename);
       } else if (kind === 'docx') {
+        filename = `${baseName}-${yearTag}-rate-study.docx`;
         const { exportDocx } = await import('../lib/exporters/docx.js');
         // Pre-load the seal as bytes (docx ImageRun expects Uint8Array)
         let sealBytes = null;
@@ -60,11 +64,15 @@ export function Step8({ study, onField }) {
           const r = await fetch(SEAL);
           sealBytes = new Uint8Array(await r.arrayBuffer());
         } catch { /* skip seal */ }
-        await exportDocx(report, `${baseName}-${yearTag}-rate-study.docx`, sealBytes);
+        await exportDocx(report, filename, sealBytes);
       }
+      pushToast(`Exported ${filename}`, { kind: 'ok' });
     } catch (e) {
       console.error(e);
-      setExportErr(`${kind.toUpperCase()} export failed: ${e.message || e}`);
+      const stage = e?.stage ? ` during ${e.stage}` : '';
+      const msg = `${kind.toUpperCase()} export failed${stage}: ${e.message || e}`;
+      setExportErr(msg);
+      pushToast(msg, { kind: 'err', duration: 8000 });
     } finally {
       setBusy('');
     }

@@ -1,33 +1,9 @@
-// Approximate outline of the Choctaw Nation Reservation in southeastern
-// Oklahoma — the 10.5 counties recognized as the historic treaty boundary.
-// This is a SIMPLIFIED polygon for visual reference only; replace with
-// official BIA / Census TIGER data when you need pixel-accurate borders.
-//
-// Reference points trace roughly: Arkansas River north, Red River south,
-// Texas border west of McCurtain, Arkansas state line east.
-export const CHOCTAW_BOUNDARY = [
-  // [lat, lng] pairs going clockwise
-  [35.55, -96.30], // Hughes County NW
-  [35.55, -95.40], // Pittsburg / McIntosh north
-  [35.45, -94.95], // Haskell County NE
-  [35.10, -94.43], // Le Flore County NE (Arkansas border)
-  [34.50, -94.43],
-  [33.85, -94.43], // Le Flore / McCurtain SE corner
-  [33.62, -94.48], // McCurtain SE — Red River turn
-  [33.65, -95.10],
-  [33.78, -95.55],
-  [33.85, -95.95],
-  [33.85, -96.40], // Bryan County south
-  [33.92, -96.65], // Bryan / Marshall transition
-  [34.10, -96.65], // Atoka W
-  [34.40, -96.55], // Coal W
-  [34.65, -96.50], // Pittsburg W
-  [34.95, -96.40], // Hughes S
-  [35.30, -96.35],
-  [35.55, -96.30], // close
-];
+// The map now renders the actual TIGER/Line CNO Council District polygons
+// from /src/assets/cno-districts.json. The hand-traced CHOCTAW_BOUNDARY array
+// that lived here has been removed; downstream code should rely on the
+// district geojson layer instead.
 
-// Approximate centroid for default map view
+// Approximate centroid for default map view (used before the geojson loads).
 export const CHOCTAW_CENTER = [34.55, -95.45];
 export const CHOCTAW_ZOOM = 8;
 

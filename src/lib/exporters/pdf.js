@@ -22,6 +22,17 @@ const MID = [71, 85, 105];
 const DIM = [148, 163, 184];
 const BORDER = [226, 232, 240];
 
+// Page geometry (A4, mm)
+const PAGE_W = 210;
+const PAGE_H = 297;
+const MARGIN_L = 15;
+const MARGIN_R = 15;
+const HEADER_H = 28;       // teal banner + lime accent
+const FOOTER_H = 14;       // line + footer text + bottom padding
+const CONTENT_TOP = HEADER_H + 7;       // 35 — first usable Y on body pages
+const CONTENT_BOTTOM = PAGE_H - FOOTER_H; // 283 — last usable Y before footer
+const CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R; // 180
+
 async function loadSealAsDataUrl() {
   const res = await fetch(SEAL);
   const blob = await res.blob();
@@ -33,35 +44,53 @@ async function loadSealAsDataUrl() {
 }
 
 function drawHeader(doc, report, sealDataUrl) {
-  // Teal banner
+  // Reset graphics state — autoTable / previous draws can leave font, color,
+  // and line width in unexpected states which would otherwise leak into the
+  // banner and shift baselines by 1–2 mm.
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.2);
+
+  // Teal banner + lime accent under it
   doc.setFillColor(...TEAL);
-  doc.rect(0, 0, 210, 26, 'F');
-  // Lime accent
+  doc.rect(0, 0, PAGE_W, HEADER_H - 2, 'F');
   doc.setFillColor(...LIME);
-  doc.rect(0, 26, 210, 0.6, 'F');
-  // Seal
+  doc.rect(0, HEADER_H - 2, PAGE_W, 0.6, 'F');
+
+  // Seal — fixed left slot, never overlaps text
   if (sealDataUrl) {
-    try { doc.addImage(sealDataUrl, 'JPEG', 10, 5, 16, 16); } catch { /* ignore */ }
+    try { doc.addImage(sealDataUrl, 'JPEG', 10, 4, 18, 18); } catch { /* ignore */ }
   }
+
+  // Title block — fixed text at fixed columns
   doc.setTextColor(255, 255, 255);
   doc.setFont(FONT, 'bold');
   doc.setFontSize(13);
-  doc.text('CHOCTAW NATION', 30, 12);
+  doc.text('CHOCTAW NATION', 32, 11);
   doc.setFont(FONT, 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...LIME);
-  doc.text('Office of Water Resource Management', 30, 17);
+  doc.text('Office of Water Resource Management', 32, 16.5);
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(7);
-  doc.text('Water Rate Study Tool', 30, 21);
-  // Right side
+  doc.text('Water Rate Study Tool', 32, 21);
+
+  // Right-side metadata — measure widths so we never overflow the right margin.
+  // Tagline + date are right-aligned to PAGE_W - 10 so they have a 10 mm
+  // safe gap from the page edge.
+  const rightX = PAGE_W - 10;
   doc.setFontSize(7);
   doc.setTextColor(220, 220, 220);
-  doc.text('FAITH ✦ FAMILY ✦ CULTURE', 200, 14, { align: 'right' });
-  doc.text(new Date(report.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), 200, 19, { align: 'right' });
+  doc.text('FAITH ❖ FAMILY ❖ CULTURE', rightX, 12, { align: 'right' });
+  const dateStr = new Date(report.generatedAt).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  });
+  doc.text(dateStr, rightX, 18, { align: 'right' });
 }
 
-function drawFooter(doc) {
+function drawFooters(doc) {
   const total = doc.internal.getNumberOfPages();
   for (let i = 1; i <= total; i++) {
     doc.setPage(i);
@@ -69,9 +98,14 @@ function drawFooter(doc) {
     doc.setFontSize(7);
     doc.setTextColor(...DIM);
     doc.setDrawColor(...BORDER);
-    doc.line(15, 285, 195, 285);
-    doc.text('Choctaw Nation of Oklahoma — Office of Water Resource Management | Water Rate Study Tool', 15, 290);
-    doc.text(`Page ${i} of ${total}`, 195, 290, { align: 'right' });
+    doc.setLineWidth(0.2);
+    const lineY = PAGE_H - 12;
+    doc.line(MARGIN_L, lineY, PAGE_W - MARGIN_R, lineY);
+    doc.text(
+      'Choctaw Nation of Oklahoma — Office of Water Resource Management | Water Rate Study Tool',
+      MARGIN_L, PAGE_H - 7,
+    );
+    doc.text(`Page ${i} of ${total}`, PAGE_W - MARGIN_R, PAGE_H - 7, { align: 'right' });
   }
 }
 
@@ -79,10 +113,10 @@ function H1(doc, text, y) {
   doc.setFont(FONT, 'bold');
   doc.setFontSize(15);
   doc.setTextColor(...TEAL);
-  doc.text(text, 15, y);
+  doc.text(text, MARGIN_L, y);
   doc.setDrawColor(...LIME);
   doc.setLineWidth(0.6);
-  doc.line(15, y + 1.5, 25, y + 1.5);
+  doc.line(MARGIN_L, y + 1.5, MARGIN_L + 10, y + 1.5);
   doc.setLineWidth(0.2);
   return y + 8;
 }
@@ -91,9 +125,9 @@ function H2(doc, text, y) {
   doc.setFont(FONT, 'bold');
   doc.setFontSize(11);
   doc.setTextColor(...TEAL);
-  doc.text(text.toUpperCase(), 15, y);
+  doc.text(text.toUpperCase(), MARGIN_L, y);
   doc.setDrawColor(...BORDER);
-  doc.line(15, y + 1, 195, y + 1);
+  doc.line(MARGIN_L, y + 1, PAGE_W - MARGIN_R, y + 1);
   return y + 6;
 }
 
@@ -101,30 +135,82 @@ function P(doc, text, y, opts = {}) {
   doc.setFont(FONT, opts.bold ? 'bold' : 'normal');
   doc.setFontSize(opts.size || 10);
   doc.setTextColor(...(opts.color || [15, 23, 42]));
-  const maxWidth = opts.maxWidth || 180;
+  const maxWidth = opts.maxWidth || CONTENT_W;
   const split = doc.splitTextToSize(text, maxWidth);
-  doc.text(split, opts.x || 15, y);
+  doc.text(split, opts.x || MARGIN_L, y);
   return y + split.length * (opts.lineHeight || 5);
 }
 
-function ensureSpace(doc, y, needed = 30) {
-  if (y + needed > 280) {
+// Add a new page if drawing `needed` mm at y would cross the bottom margin.
+// Returns the (possibly new) y. Always pass through the return value:
+//     y = ensureSpace(doc, y, ...);
+function ensureSpace(doc, report, sealDataUrl, y, needed = 30) {
+  if (y + needed > CONTENT_BOTTOM) {
     doc.addPage();
-    return 35; // below header
+    drawHeader(doc, report, sealDataUrl);
+    return CONTENT_TOP;
   }
   return y;
 }
 
-// Render parsed markdown blocks. Headings get teal styling and an underline,
-// paragraphs are mixed-run text supporting **bold** and *italic*, lists use a
+// Common autoTable options shared by every table — enforces top/bottom
+// margins so autoTable's own page-break logic respects the header/footer,
+// and re-paints the header on every page autoTable adds.
+function tableBase(report, sealDataUrl, extra = {}) {
+  return {
+    margin: { top: CONTENT_TOP, bottom: PAGE_H - CONTENT_BOTTOM, left: MARGIN_L, right: MARGIN_R },
+    styles: { font: FONT, fontSize: 9, cellPadding: 2.5, overflow: 'linebreak', textColor: [15, 23, 42] },
+    headStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
+    didDrawPage: (data) => {
+      // autoTable triggers this on every page it touches, including the page
+      // it was started on. Re-painting the header is idempotent and ensures
+      // any page autoTable added has the banner.
+      drawHeader(doc(data), report, sealDataUrl);
+    },
+    ...extra,
+  };
+}
+// Helper so `didDrawPage` callbacks can reach the live doc
+function doc(data) { return data.doc; }
+
+// Render parsed markdown blocks. Headings get teal styling and an underline;
+// paragraphs are mixed-run text supporting **bold** and *italic*; lists use a
 // bullet glyph. Spans pages automatically and re-draws the page header.
+//
+// State is held in a mutable object so the inner `ensure` and `drawRichText`
+// helpers reassign `state.y` and that update propagates back to the outer
+// loop. (The previous version kept `y` in a local variable that the inner
+// helpers couldn't update — body text drew at the old Y on a fresh page,
+// painting over the just-redrawn header.)
 function renderMarkdownPDF(doc, report, sealDataUrl, blocks, startY) {
-  let y = startY;
+  const state = { y: startY };
+
   const ensure = (need) => {
-    if (y + need > 280) {
+    if (state.y + need > CONTENT_BOTTOM) {
       doc.addPage();
       drawHeader(doc, report, sealDataUrl);
-      y = 35;
+      state.y = CONTENT_TOP;
+    }
+  };
+
+  const drawRichText = (runs, x, width, lineH) => {
+    let cx = x;
+    for (const run of runs) {
+      doc.setFont(FONT, run.bold ? 'bold' : (run.italic ? 'italic' : 'normal'));
+      const words = run.text.split(/(\s+)/);
+      for (const w of words) {
+        if (w === '') continue;
+        const wWidth = doc.getTextWidth(w);
+        if (cx + wWidth > x + width && cx !== x) {
+          state.y += lineH;
+          ensure(lineH);
+          cx = x;
+          if (/^\s+$/.test(w)) continue;
+        }
+        doc.text(w, cx, state.y);
+        cx += wWidth;
+      }
     }
   };
 
@@ -133,121 +219,107 @@ function renderMarkdownPDF(doc, report, sealDataUrl, blocks, startY) {
       const sizes = { 1: 14, 2: 12, 3: 10.5 };
       const padTop = { 1: 6, 2: 5, 3: 4 };
       const padBot = { 1: 4, 2: 3, 3: 2 };
-      ensure(sizes[blk.level] + 6);
-      y += padTop[blk.level];
+      ensure(sizes[blk.level] + padTop[blk.level] + padBot[blk.level]);
+      state.y += padTop[blk.level];
       doc.setFont(FONT, 'bold');
       doc.setFontSize(sizes[blk.level]);
       doc.setTextColor(...TEAL);
       const text = blk.runs.map(r => r.text).join('');
-      doc.text(text, 15, y);
-      y += sizes[blk.level] * 0.4;
+      doc.text(text, MARGIN_L, state.y);
+      state.y += sizes[blk.level] * 0.4;
       if (blk.level === 1) {
         doc.setDrawColor(...LIME);
         doc.setLineWidth(0.6);
-        doc.line(15, y - 1, 30, y - 1);
+        doc.line(MARGIN_L, state.y - 1, MARGIN_L + 15, state.y - 1);
         doc.setLineWidth(0.2);
       } else if (blk.level === 2) {
         doc.setDrawColor(...BORDER);
-        doc.line(15, y - 1, 195, y - 1);
+        doc.line(MARGIN_L, state.y - 1, PAGE_W - MARGIN_R, state.y - 1);
       }
-      y += padBot[blk.level];
+      state.y += padBot[blk.level];
       continue;
     }
     if (blk.type === 'paragraph') {
+      ensure(8);
       doc.setFontSize(10);
       doc.setTextColor(15, 23, 42);
-      y = drawRichText(doc, blk.runs, 15, y, 180, 5);
-      y += 3;
+      drawRichText(blk.runs, MARGIN_L, CONTENT_W, 5);
+      state.y += 5 + 3;
       continue;
     }
     if (blk.type === 'list') {
       doc.setFontSize(10);
       doc.setTextColor(15, 23, 42);
       for (const item of blk.items) {
+        ensure(6);
         doc.setFont(FONT, 'bold');
         doc.setTextColor(...TEAL);
-        ensure(6);
-        doc.text('•', 15, y);
+        doc.text('•', MARGIN_L, state.y);
         doc.setFont(FONT, 'normal');
         doc.setTextColor(15, 23, 42);
-        y = drawRichText(doc, item, 19, y, 176, 5);
-        y += 1;
+        drawRichText(item, MARGIN_L + 4, CONTENT_W - 4, 5);
+        state.y += 5 + 1;
       }
-      y += 3;
+      state.y += 3;
     }
   }
-  return y;
-
-  // Render an array of {text, bold, italic} runs as wrapped, justified text.
-  function drawRichText(doc, runs, x, yStart, width, lineH) {
-    let cy = yStart;
-    let cx = x;
-    let firstLine = true;
-    for (const run of runs) {
-      doc.setFont(FONT, run.bold ? 'bold' : (run.italic ? 'italic' : 'normal'));
-      // Split this run respecting the remaining width on the current line.
-      const words = run.text.split(/(\s+)/); // keep whitespace
-      for (const w of words) {
-        if (w === '') continue;
-        const wWidth = doc.getTextWidth(w);
-        // Need to wrap?
-        if (cx + wWidth > x + width && cx !== x) {
-          cy += lineH;
-          ensure(lineH);
-          cx = x;
-          firstLine = false;
-          if (/^\s+$/.test(w)) continue; // skip leading whitespace on new line
-        }
-        doc.text(w, cx, cy);
-        cx += wWidth;
-      }
-    }
-    return cy;
-  }
+  return state.y;
 }
 
 export async function exportPDF(report, filename) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  const pdfDoc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const sealDataUrl = await loadSealAsDataUrl().catch(() => null);
 
+  // Render charts first so we can fail fast on chart errors — but each one
+  // is wrapped so a single chart failure doesn't kill the whole export.
+  let fundChart = null, revExpChart = null, breakdownChart = null;
+  try { fundChart = await renderFundChart(report.proj); }
+  catch (e) { console.error('PDF: fund chart render failed', e); }
+  try { revExpChart = await renderRevExpChart(report.proj); }
+  catch (e) { console.error('PDF: rev/exp chart render failed', e); }
+  if (report.expCats.length > 0) {
+    try { breakdownChart = await renderExpenseBreakdown(report.expCats); }
+    catch (e) { console.error('PDF: expense breakdown chart render failed', e); }
+  }
+
   // ---- Cover page ----
-  drawHeader(doc, report, sealDataUrl);
+  drawHeader(pdfDoc, report, sealDataUrl);
   let y = 50;
-  doc.setFont(FONT, 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(...TEAL);
-  doc.text('Water Rate Study', 15, y); y += 11;
-  doc.setFont(FONT, 'normal');
-  doc.setFontSize(13);
-  doc.setTextColor(...MID);
-  doc.text('Final Report — Board of Directors / Council Briefing', 15, y); y += 14;
+  pdfDoc.setFont(FONT, 'bold');
+  pdfDoc.setFontSize(22);
+  pdfDoc.setTextColor(...TEAL);
+  pdfDoc.text('Water Rate Study', MARGIN_L, y); y += 11;
+  pdfDoc.setFont(FONT, 'normal');
+  pdfDoc.setFontSize(13);
+  pdfDoc.setTextColor(...MID);
+  pdfDoc.text('Final Report — Board of Directors / Council Briefing', MARGIN_L, y); y += 14;
 
   // System info card
-  doc.setDrawColor(...TEAL);
-  doc.setLineWidth(0.8);
-  doc.line(15, y, 18, y);
-  doc.setLineWidth(0.2);
-  y = P(doc, 'PREPARED FOR', y + 5, { size: 8, color: DIM });
-  y = P(doc, report.system.name || '[System Name]', y + 1, { size: 14, bold: true, color: TEAL });
+  pdfDoc.setDrawColor(...TEAL);
+  pdfDoc.setLineWidth(0.8);
+  pdfDoc.line(MARGIN_L, y, MARGIN_L + 3, y);
+  pdfDoc.setLineWidth(0.2);
+  y = P(pdfDoc, 'PREPARED FOR', y + 5, { size: 8, color: DIM });
+  y = P(pdfDoc, report.system.name || '[System Name]', y + 1, { size: 14, bold: true, color: TEAL });
   if (report.system.pwsId || report.system.county) {
-    y = P(doc, [report.system.pwsId, report.system.county && `${report.system.county} County`, report.system.year].filter(Boolean).join(' • '), y + 1, { size: 10, color: MID });
+    y = P(pdfDoc, [report.system.pwsId, report.system.county && `${report.system.county} County`, report.system.year].filter(Boolean).join(' • '), y + 1, { size: 10, color: MID });
   }
   if (report.system.contact) {
-    y = P(doc, `Contact: ${report.system.contact}${report.system.contactEmail ? ' — ' + report.system.contactEmail : ''}`, y + 1, { size: 9, color: MID });
+    y = P(pdfDoc, `Contact: ${report.system.contact}${report.system.contactEmail ? ' — ' + report.system.contactEmail : ''}`, y + 1, { size: 9, color: MID });
   }
 
   y += 10;
   // Headline metric box
-  doc.setFillColor(240, 249, 224);
-  doc.setDrawColor(134, 239, 172);
-  doc.roundedRect(15, y, 180, 36, 2, 2, 'FD');
-  doc.setFont(FONT, 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(...TEAL);
-  doc.text('AT A GLANCE', 21, y + 7);
-  doc.setFont(FONT, 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(...MID);
+  pdfDoc.setFillColor(240, 249, 224);
+  pdfDoc.setDrawColor(134, 239, 172);
+  pdfDoc.roundedRect(MARGIN_L, y, CONTENT_W, 36, 2, 2, 'FD');
+  pdfDoc.setFont(FONT, 'bold');
+  pdfDoc.setFontSize(9);
+  pdfDoc.setTextColor(...TEAL);
+  pdfDoc.text('AT A GLANCE', MARGIN_L + 6, y + 7);
+  pdfDoc.setFont(FONT, 'normal');
+  pdfDoc.setFontSize(8);
+  pdfDoc.setTextColor(...MID);
   const cells = [
     ['Cost / 1,000 gal (Cur → Prop)', `${fmt.c(report.curCP1K)} → ${fmt.c(report.propCP1K)}`],
     ['Operating Ratio (Cur → Prop)', `${report.curOR.toFixed(2)} → ${report.propOR.toFixed(2)}`],
@@ -255,27 +327,28 @@ export async function exportPDF(report, filename) {
     ['Affordability Index (Prop)', report.mhi ? fmt.p(report.propAI) : 'MHI not entered'],
   ];
   cells.forEach((c, i) => {
-    const cx = 21 + (i % 2) * 90;
+    const cx = MARGIN_L + 6 + (i % 2) * 90;
     const cy = y + 14 + Math.floor(i / 2) * 10;
-    doc.setFontSize(7);
-    doc.setTextColor(...DIM);
-    doc.text(c[0].toUpperCase(), cx, cy);
-    doc.setFontSize(11);
-    doc.setTextColor(...TEAL);
-    doc.text(c[1], cx, cy + 5);
+    pdfDoc.setFontSize(7);
+    pdfDoc.setTextColor(...DIM);
+    pdfDoc.text(c[0].toUpperCase(), cx, cy);
+    pdfDoc.setFontSize(11);
+    pdfDoc.setTextColor(...TEAL);
+    pdfDoc.text(c[1], cx, cy + 5);
   });
 
   // ---- Page 2: Executive Summary / Factors ----
-  doc.addPage();
-  drawHeader(doc, report, sealDataUrl);
-  y = 35;
-  y = H1(doc, 'Executive Summary', y);
-  y = P(doc,
+  pdfDoc.addPage();
+  drawHeader(pdfDoc, report, sealDataUrl);
+  y = CONTENT_TOP;
+  y = H1(pdfDoc, 'Executive Summary', y);
+  y = P(pdfDoc,
     "The Choctaw Nation's Water Resource Management Office prepared this rate analysis to ensure the water system remains financially sustainable, operationally sound, and compliant with applicable standards. This report evaluates revenue strictly generated from rates — not grants, loans, or one-time revenues — to assess long-term financial health based on operational income alone.",
     y, { color: MID });
   y += 4;
 
-  y = H2(doc, 'Factors Considered in the Rate Analysis', y);
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 20);
+  y = H2(pdfDoc, 'Factors Considered in the Rate Analysis', y);
   const factors = [
     ['Cost to Produce and Deliver Water', 'Real cost of providing water/wastewater services: administration, operations, and maintenance.'],
     ['Current and Future Needs', 'Ongoing and upcoming infrastructure, equipment, and maintenance requirements.'],
@@ -284,31 +357,29 @@ export async function exportPDF(report, filename) {
     ['Debt to Income Ratio', "A measure of the system's ability to manage debt obligations responsibly."],
   ];
   factors.forEach(([t, d]) => {
-    y = ensureSpace(doc, y, 14);
-    doc.setFont(FONT, 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(...TEAL);
-    doc.text(t, 15, y);
-    doc.setFont(FONT, 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(...MID);
-    const split = doc.splitTextToSize(d, 175);
-    doc.text(split, 15, y + 4);
+    y = ensureSpace(pdfDoc, report, sealDataUrl, y, 16);
+    pdfDoc.setFont(FONT, 'bold');
+    pdfDoc.setFontSize(10);
+    pdfDoc.setTextColor(...TEAL);
+    pdfDoc.text(t, MARGIN_L, y);
+    pdfDoc.setFont(FONT, 'normal');
+    pdfDoc.setFontSize(9);
+    pdfDoc.setTextColor(...MID);
+    const split = pdfDoc.splitTextToSize(d, CONTENT_W - 5);
+    pdfDoc.text(split, MARGIN_L, y + 4);
     y += 4 + split.length * 4 + 3;
   });
 
   // ---- System Scorecard ----
-  y = ensureSpace(doc, y + 4, 60);
-  y = H2(doc, 'Financial Health Scorecard', y);
-  autoTable(doc, {
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y + 4, 60);
+  y = H2(pdfDoc, 'Financial Health Scorecard', y);
+  autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['Metric', 'Current', 'Proposed', 'Benchmark', 'Status']],
     body: report.scorecard.map(r => [
       r.metric, r.cur, r.prop, r.benchmark,
       r.propOk === null ? 'N/A' : (r.propOk ? '✓ Healthy' : '✗ Below'),
     ]),
-    styles: { font: FONT, fontSize: 9, cellPadding: 2, textColor: [15, 23, 42] },
-    headStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index === 4) {
@@ -317,45 +388,46 @@ export async function exportPDF(report, filename) {
         else if (r.propOk === false) data.cell.styles.textColor = [153, 27, 27];
       }
     },
-    margin: { left: 15, right: 15 },
-  });
-  y = doc.lastAutoTable.finalY + 6;
+  }));
+  y = pdfDoc.lastAutoTable.finalY + 8;
 
   // ---- Cost & 5-year ----
-  doc.addPage();
-  drawHeader(doc, report, sealDataUrl);
-  y = 35;
-  y = H1(doc, 'Cost to Produce & 5-Year Outlook', y);
-  y = P(doc,
+  pdfDoc.addPage();
+  drawHeader(pdfDoc, report, sealDataUrl);
+  y = CONTENT_TOP;
+  y = H1(pdfDoc, 'Cost to Produce & 5-Year Outlook', y);
+  y = P(pdfDoc,
     'Providing safe, reliable drinking water and/or wastewater services requires consistent investment in operations, infrastructure, and personnel. The cost to produce a thousand gallons of water captures the full operational burden today, while the five-year outlook projects what those costs become under realistic inflation scenarios.',
     y, { color: MID });
   y += 4;
 
   // Cost cards
-  doc.setDrawColor(...BORDER);
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(15, y, 87, 22, 2, 2, 'FD');
-  doc.setFontSize(7);
-  doc.setTextColor(...DIM);
-  doc.text('CURRENT COST PER 1,000 GAL', 21, y + 6);
-  doc.setFontSize(18);
-  doc.setTextColor(...TEAL);
-  doc.text(fmt.c(report.curCP1K), 21, y + 16);
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 30);
+  pdfDoc.setDrawColor(...BORDER);
+  pdfDoc.setFillColor(248, 250, 252);
+  pdfDoc.roundedRect(MARGIN_L, y, 87, 22, 2, 2, 'FD');
+  pdfDoc.setFontSize(7);
+  pdfDoc.setTextColor(...DIM);
+  pdfDoc.text('CURRENT COST PER 1,000 GAL', MARGIN_L + 6, y + 6);
+  pdfDoc.setFontSize(18);
+  pdfDoc.setTextColor(...TEAL);
+  pdfDoc.text(fmt.c(report.curCP1K), MARGIN_L + 6, y + 16);
 
-  doc.setFillColor(240, 249, 224);
-  doc.setDrawColor(134, 239, 172);
-  doc.roundedRect(108, y, 87, 22, 2, 2, 'FD');
-  doc.setFontSize(7);
-  doc.setTextColor(...DIM);
-  doc.text('PROPOSED COST PER 1,000 GAL', 114, y + 6);
-  doc.setFontSize(18);
-  doc.setTextColor(90, 148, 0);
-  doc.text(fmt.c(report.propCP1K), 114, y + 16);
+  pdfDoc.setFillColor(240, 249, 224);
+  pdfDoc.setDrawColor(134, 239, 172);
+  pdfDoc.roundedRect(MARGIN_L + 93, y, 87, 22, 2, 2, 'FD');
+  pdfDoc.setFontSize(7);
+  pdfDoc.setTextColor(...DIM);
+  pdfDoc.text('PROPOSED COST PER 1,000 GAL', MARGIN_L + 99, y + 6);
+  pdfDoc.setFontSize(18);
+  pdfDoc.setTextColor(90, 148, 0);
+  pdfDoc.text(fmt.c(report.propCP1K), MARGIN_L + 99, y + 16);
   y += 30;
 
   // 5-year outlook table
-  y = H2(doc, 'Five-Year Outlook', y);
-  autoTable(doc, {
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 50);
+  y = H2(pdfDoc, 'Five-Year Outlook', y);
+  autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['Scenario', ...report.fiveYearOutlook.map(r => r.yr)]],
     body: [
@@ -364,118 +436,115 @@ export async function exportPDF(report, filename) {
       ['Annual Expenses (5% inflation)', ...report.fiveYearOutlook.map(r => fmt.c(r.exp5))],
       ['Fund Balance (Proposed)', ...report.fiveYearOutlook.map(r => fmt.c(r.fundBalance))],
     ],
-    styles: { font: FONT, fontSize: 8.5, cellPadding: 2 },
-    headStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    styles: { font: FONT, fontSize: 8.5, cellPadding: 2, overflow: 'linebreak' },
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 }, 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
-    margin: { left: 15, right: 15 },
-  });
-  y = doc.lastAutoTable.finalY + 4;
-  y = P(doc,
+  }));
+  y = pdfDoc.lastAutoTable.finalY + 5;
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 12);
+  y = P(pdfDoc,
     'The 3% scenario is a conservative adjustment aligning with typical inflation. The 5% scenario accounts for rising costs in utilities, materials, and labor, and is recommended for planning purposes.',
     y, { size: 8, color: DIM });
 
   // ---- Charts page ----
-  const fundChart = await renderFundChart(report.proj);
-  const revExpChart = await renderRevExpChart(report.proj);
-  const breakdownChart = report.expCats.length > 0 ? await renderExpenseBreakdown(report.expCats) : null;
+  if (fundChart || revExpChart || breakdownChart) {
+    pdfDoc.addPage();
+    drawHeader(pdfDoc, report, sealDataUrl);
+    y = CONTENT_TOP;
+    y = H1(pdfDoc, 'Projection Charts', y);
 
-  doc.addPage();
-  drawHeader(doc, report, sealDataUrl);
-  y = 35;
-  y = H1(doc, 'Projection Charts', y);
-  y = H2(doc, 'Fund Balance Over Five Years', y);
-  doc.addImage(fundChart.dataUrl, 'PNG', 15, y, 180, 80);
-  y += 86;
-  y = H2(doc, 'Revenue vs. Expenses', y);
-  doc.addImage(revExpChart.dataUrl, 'PNG', 15, y, 180, 70);
-  y += 76;
-  if (breakdownChart) {
-    y = ensureSpace(doc, y, 90);
-    y = H2(doc, 'Expense Breakdown by Category', y);
-    doc.addImage(breakdownChart.dataUrl, 'PNG', 15, y, 180, 70);
+    if (fundChart) {
+      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 95);
+      y = H2(pdfDoc, 'Fund Balance Over Five Years', y);
+      pdfDoc.addImage(fundChart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, 80);
+      y += 86;
+    }
+    if (revExpChart) {
+      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 85);
+      y = H2(pdfDoc, 'Revenue vs. Expenses', y);
+      pdfDoc.addImage(revExpChart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, 70);
+      y += 76;
+    }
+    if (breakdownChart) {
+      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 85);
+      y = H2(pdfDoc, 'Expense Breakdown by Category', y);
+      pdfDoc.addImage(breakdownChart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, 70);
+      y += 76;
+    }
   }
 
   // ---- Operating Ratio + Affordability + DTI ----
-  doc.addPage();
-  drawHeader(doc, report, sealDataUrl);
-  y = 35;
-  y = H1(doc, 'Detailed Financial Metrics', y);
+  pdfDoc.addPage();
+  drawHeader(pdfDoc, report, sealDataUrl);
+  y = CONTENT_TOP;
+  y = H1(pdfDoc, 'Detailed Financial Metrics', y);
 
-  y = H2(doc, 'Operating Ratio', y);
-  y = P(doc, 'The Operating Ratio compares total operational revenues to operational expenses. A ratio of 1.0 = break even; 1.25+ = healthy margin for reinvestment and reserves; below 1.0 = the system should raise rates or reduce costs to remain solvent.', y, { color: MID });
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
+  y = H2(pdfDoc, 'Operating Ratio', y);
+  y = P(pdfDoc, 'The Operating Ratio compares total operational revenues to operational expenses. A ratio of 1.0 = break even; 1.25+ = healthy margin for reinvestment and reserves; below 1.0 = the system should raise rates or reduce costs to remain solvent.', y, { color: MID });
   y += 2;
-  autoTable(doc, {
+  autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
     body: [
       ['Operating Ratio', report.curOR.toFixed(2), report.propOR.toFixed(2), report.propOR >= 1.25 ? '✓ Healthy' : report.propOR >= 1 ? '⚠ Break-even' : '✗ Below'],
     ],
-    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
-    headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
-    margin: { left: 15, right: 15 },
-  });
-  y = doc.lastAutoTable.finalY + 6;
+  }));
+  y = pdfDoc.lastAutoTable.finalY + 8;
 
-  y = H2(doc, 'Affordability Index', y);
-  y = P(doc, 'The Affordability Index measures household water cost as a share of monthly income (Cost of 5,000 gal ÷ Monthly MHI). USDA Rural Development considers utilities grant-eligible if the index exceeds 1.50%; below 2.00% is considered affordable by EPA standards.', y, { color: MID });
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 50);
+  y = H2(pdfDoc, 'Affordability Index', y);
+  y = P(pdfDoc, 'The Affordability Index measures household water cost as a share of monthly income (Cost of 5,000 gal ÷ Monthly MHI). USDA Rural Development considers utilities grant-eligible if the index exceeds 1.50%; below 2.00% is considered affordable by EPA standards.', y, { color: MID });
   y += 2;
   if (report.mhi > 0) {
-    autoTable(doc, {
+    autoTable(pdfDoc, tableBase(report, sealDataUrl, {
       startY: y,
       head: [['', 'Current', 'Proposed', 'Note']],
       body: [
         ['5,000 gal Bill', fmt.c(report.cost5kCur), fmt.c(report.cost5kProp), `Monthly MHI: ${fmt.c(report.mhi)}`],
         ['Affordability Index', fmt.p(report.curAI), fmt.p(report.propAI), report.propAI < 0.015 ? 'USDA RD eligible' : report.propAI < 0.02 ? 'Affordable' : 'Affordability concern'],
       ],
-      styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
-      headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
-      margin: { left: 15, right: 15 },
-    });
-    y = doc.lastAutoTable.finalY + 6;
+    }));
+    y = pdfDoc.lastAutoTable.finalY + 8;
   } else {
-    y = P(doc, 'Median Monthly Household Income not entered — Affordability Index unavailable.', y, { color: RED });
-    y += 2;
+    y = P(pdfDoc, 'Median Monthly Household Income not entered — Affordability Index unavailable.', y, { color: RED });
+    y += 4;
   }
 
-  y = H2(doc, 'Debt to Income Ratio', y);
-  y = P(doc, "The Debt-to-Income Ratio shows the percentage of income used for debt payments. A ratio under 45% is generally considered manageable.", y, { color: MID });
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
+  y = H2(pdfDoc, 'Debt to Income Ratio', y);
+  y = P(pdfDoc, "The Debt-to-Income Ratio shows the percentage of income used for debt payments. A ratio under 45% is generally considered manageable.", y, { color: MID });
   y += 2;
-  autoTable(doc, {
+  autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
     body: [['DTI', fmt.p(report.curDTI), fmt.p(report.propDTI), report.propDTI < 0.45 ? '✓ Manageable' : '✗ High']],
-    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
-    headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
-    margin: { left: 15, right: 15 },
-  });
-  y = doc.lastAutoTable.finalY + 6;
+  }));
+  y = pdfDoc.lastAutoTable.finalY + 8;
 
-  y = ensureSpace(doc, y, 30);
-  y = H2(doc, 'Depreciation & Capital Improvements', y);
-  autoTable(doc, {
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
+  y = H2(pdfDoc, 'Depreciation & Capital Improvements', y);
+  autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['Item', 'Current', 'Proposed']],
     body: [
       ['Monthly depreciation set-aside', fmt.c(report.curDepr), fmt.c(report.propDepr)],
       ['Monthly capital improvement set-aside', fmt.c(report.curLR), fmt.c(report.propLR)],
     ],
-    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
-    headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
-    margin: { left: 15, right: 15 },
-  });
+  }));
+  y = pdfDoc.lastAutoTable.finalY + 8;
 
   // ---- Customer Class breakdown ----
-  doc.addPage();
-  drawHeader(doc, report, sealDataUrl);
-  y = 35;
-  y = H1(doc, 'Customer Class Revenue Breakdown', y);
-  y = P(doc, 'Monthly revenue by customer class under current and proposed rates.', y, { color: MID });
+  pdfDoc.addPage();
+  drawHeader(pdfDoc, report, sealDataUrl);
+  y = CONTENT_TOP;
+  y = H1(pdfDoc, 'Customer Class Revenue Breakdown', y);
+  y = P(pdfDoc, 'Monthly revenue by customer class under current and proposed rates.', y, { color: MID });
   y += 2;
-  autoTable(doc, {
+  autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['Class', 'Customers', 'Current Mo.', 'Proposed Mo.', '$ Δ', '% Δ']],
     body: report.classRows.map(r => [
@@ -490,25 +559,21 @@ export async function exportPDF(report, filename) {
       (report.revProp.monthly - report.revCur.monthly >= 0 ? '+' : '') + fmt.c(report.revProp.monthly - report.revCur.monthly),
       report.revCur.monthly > 0 ? ((report.revProp.monthly - report.revCur.monthly) / report.revCur.monthly * 100).toFixed(1) + '%' : '—',
     ]],
-    styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
-    headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
-    footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
-    margin: { left: 15, right: 15 },
-  });
-  y = doc.lastAutoTable.finalY + 8;
+  }));
+  y = pdfDoc.lastAutoTable.finalY + 10;
 
   if (report.scenario?.rows?.length) {
-    y = ensureSpace(doc, y, 60);
-    y = H2(doc, `Active Scenario: ${report.scenario.label || 'Custom'}`, y);
+    y = ensureSpace(pdfDoc, report, sealDataUrl, y, 60);
+    y = H2(pdfDoc, `Active Scenario: ${report.scenario.label || 'Custom'}`, y);
     y = P(
-      doc,
+      pdfDoc,
       `Scenario monthly revenue is ${fmt.c(report.scenario.monthlyRevenue)}, which is ${(report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed)} versus proposed rates. Net monthly surplus / (deficit) after proposed expenses is ${(report.scenario.netMonthly >= 0 ? '+' : '') + fmt.c(report.scenario.netMonthly)}.`,
       y,
       { color: MID, size: 9 },
     );
     y += 2;
-    autoTable(doc, {
+    autoTable(pdfDoc, tableBase(report, sealDataUrl, {
       startY: y,
       head: [['Class', 'Proposed (Base)', 'Rate Basis', 'Multiplier', 'Scenario Mo.', 'vs. Proposed']],
       body: report.scenario.rows.map(r => [
@@ -527,61 +592,56 @@ export async function exportPDF(report, filename) {
         fmt.c(report.scenario.monthlyRevenue),
         (report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed),
       ]],
-      styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
-      headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
-      footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
-      margin: { left: 15, right: 15 },
-    });
-    y = doc.lastAutoTable.finalY + 8;
+    }));
+    y = pdfDoc.lastAutoTable.finalY + 10;
   }
 
   if (report.expCats.length > 0) {
-    y = H2(doc, 'Monthly Expense Breakdown', y);
-    autoTable(doc, {
+    y = ensureSpace(pdfDoc, report, sealDataUrl, y, 50);
+    y = H2(pdfDoc, 'Monthly Expense Breakdown', y);
+    autoTable(pdfDoc, tableBase(report, sealDataUrl, {
       startY: y,
       head: [['Category', 'Current', 'Proposed', '$ Δ']],
       body: report.expCats.map(c => [c.label, fmt.c(c.cur), fmt.c(c.prop), (c.delta >= 0 ? '+' : '') + fmt.c(c.delta)]),
       foot: [['Total', fmt.c(report.curBT.total), fmt.c(report.propBT.total),
         (report.propBT.total - report.curBT.total >= 0 ? '+' : '') + fmt.c(report.propBT.total - report.curBT.total)]],
-      styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
-      headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
-      footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
-      margin: { left: 15, right: 15 },
-    });
+    }));
+    y = pdfDoc.lastAutoTable.finalY + 8;
   }
 
   // ---- AI Analysis ----
   if (report.aiAnalysis) {
-    doc.addPage();
-    drawHeader(doc, report, sealDataUrl);
-    y = 35;
-    y = H1(doc, 'Analyst Narrative', y);
-    y = P(doc, 'AI-generated analysis based on the data captured in this study.', y, { size: 9, color: DIM });
+    pdfDoc.addPage();
+    drawHeader(pdfDoc, report, sealDataUrl);
+    y = CONTENT_TOP;
+    y = H1(pdfDoc, 'Analyst Narrative', y);
+    y = P(pdfDoc, 'AI-generated analysis based on the data captured in this study.', y, { size: 9, color: DIM });
     y += 4;
-    y = renderMarkdownPDF(doc, report, sealDataUrl, parseMarkdown(report.aiAnalysis), y);
+    y = renderMarkdownPDF(pdfDoc, report, sealDataUrl, parseMarkdown(report.aiAnalysis), y);
   }
 
   // ---- Final recommendations + notes ----
-  doc.addPage();
-  drawHeader(doc, report, sealDataUrl);
-  y = 35;
-  y = H1(doc, 'Final Recommendations', y);
-  y = P(doc,
+  pdfDoc.addPage();
+  drawHeader(pdfDoc, report, sealDataUrl);
+  y = CONTENT_TOP;
+  y = H1(pdfDoc, 'Final Recommendations', y);
+  y = P(pdfDoc,
     'The Choctaw Nation recommends that each system conduct a rate analysis and adjust rates as needed to ensure financial sustainability, proper infrastructure funding, and continued service to tribal members.',
     y);
   y += 4;
-  y = P(doc,
-    'Note: This analysis serves as guidance and reference only. The Choctaw Nation is not responsible for any decisions made based on this analysis. Each system\'s board or council retains final authority over rate setting.',
+  y = P(pdfDoc,
+    "Note: This analysis serves as guidance and reference only. The Choctaw Nation is not responsible for any decisions made based on this analysis. Each system's board or council retains final authority over rate setting.",
     y, { size: 9, color: MID });
 
   if (report.reportNotes) {
     y += 6;
-    y = H2(doc, 'Report Notes & Additional Observations', y);
-    y = P(doc, report.reportNotes, y);
+    y = ensureSpace(pdfDoc, report, sealDataUrl, y, 30);
+    y = H2(pdfDoc, 'Report Notes & Additional Observations', y);
+    y = P(pdfDoc, report.reportNotes, y);
   }
 
-  drawFooter(doc);
-  doc.save(filename);
+  drawFooters(pdfDoc);
+  pdfDoc.save(filename);
 }

@@ -11,30 +11,46 @@ Chart.register(LineController, BarController, LineElement, BarElement, PointElem
 
 const FONT = "'Gill Sans MT','Trebuchet MS',sans-serif";
 
-async function renderChart(config, { width = 1200, height = 600 } = {}) {
+async function renderChart(config, { width = 900, height = 480 } = {}) {
   const canvas = document.createElement('canvas');
+  // Lock canvas to logical pixels regardless of devicePixelRatio. Without
+  // this, on HiDPI displays Chart.js + toBase64Image emit a 2–3× scaled PNG,
+  // which bloats PDF/DOCX files and can shift layout if downstream code
+  // expects a known size.
   canvas.width = width;
   canvas.height = height;
-  // Off-screen but in the document so the canvas renders text properly.
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
   canvas.style.position = 'fixed';
   canvas.style.left = '-9999px';
   canvas.style.top = '0';
   document.body.appendChild(canvas);
-  const chart = new Chart(canvas, {
-    ...config,
-    options: {
-      ...(config.options || {}),
-      animation: false,
-      responsive: false,
-      maintainAspectRatio: false,
-    },
-  });
-  // One frame for layout to settle
-  await new Promise(r => requestAnimationFrame(() => r()));
-  const png = chart.toBase64Image('image/png', 1);
-  chart.destroy();
-  canvas.remove();
-  return { dataUrl: png, width, height };
+
+  let chart = null;
+  try {
+    chart = new Chart(canvas, {
+      ...config,
+      options: {
+        ...(config.options || {}),
+        animation: false,
+        responsive: false,
+        maintainAspectRatio: false,
+        devicePixelRatio: 1,
+      },
+    });
+    // Wait for layout, but cap at 500ms in case the browser stalls.
+    await Promise.race([
+      new Promise(r => requestAnimationFrame(() => r())),
+      new Promise(r => setTimeout(r, 500)),
+    ]);
+    const png = chart.toBase64Image('image/png', 1);
+    return { dataUrl: png, width, height };
+  } finally {
+    if (chart) {
+      try { chart.destroy(); } catch { /* ignore */ }
+    }
+    canvas.remove();
+  }
 }
 
 export async function renderFundChart(proj) {
@@ -98,5 +114,5 @@ export async function renderExpenseBreakdown(catTotals) {
         y: { ticks: { font: { family: FONT, size: 12 } }, grid: { display: false } },
       },
     },
-  }, { width: 1200, height: 500 });
+  }, { width: 900, height: 420 });
 }

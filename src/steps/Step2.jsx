@@ -4,9 +4,52 @@ import { nv, classMonthlyIncome, totalRevenue, fmt, calcBill, calcHML, budgetTot
 import { F, $I } from '../components/atoms.jsx';
 import { TierTable } from '../components/TierTable.jsx';
 import { ask, hasApiKey, MODEL_HEAVY } from '../lib/ai.js';
+import { pushToast } from '../components/Toasts.jsx';
 
 // True for the user-defined slots c5/c6/c7 only (NOT 'com' for Commercial).
 const isCustomSlot = (id) => /^c\d/.test(id);
+
+// Quote a CSV field if it contains a comma, quote, or newline.
+const csvQuote = (v) => {
+  const s = v == null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+function exportClassesCsv(classes, study) {
+  const enabled = (classes || []).filter(c => c.enabled);
+  if (enabled.length === 0) {
+    pushToast('No enabled customer classes to export.', { kind: 'warn' });
+    return;
+  }
+  // Header: id, name, side, customers, gallonsSold, minCharge, tier1Gal, tier1Rate, ...
+  const maxTiers = Math.max(0, ...enabled.flatMap(c => [c.cur?.tiers?.length || 0, c.prop?.tiers?.length || 0]));
+  const tierCols = [];
+  for (let i = 1; i <= maxTiers; i++) tierCols.push(`tier${i}Gal`, `tier${i}Rate`);
+  const head = ['id', 'name', 'side', 'customers', 'gallonsSold', 'minCharge', ...tierCols];
+  const rows = [head];
+  for (const c of enabled) {
+    for (const side of ['cur', 'prop']) {
+      const s = c[side] || {};
+      const tiers = s.tiers || [];
+      const flat = [];
+      for (let i = 0; i < maxTiers; i++) {
+        flat.push(tiers[i]?.gal ?? '', tiers[i]?.rate ?? '');
+      }
+      rows.push([c.id, c.name || '', side, s.customers ?? '', s.gallonsSold ?? '', s.minCharge ?? '', ...flat]);
+    }
+  }
+  const csv = rows.map(r => r.map(csvQuote).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const safe = (study.systemInfo?.systemName || study.name || 'rate-study').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+  const filename = `${safe}-tier-rates.csv`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  pushToast(`Exported ${filename}`);
+}
 const cloneSide = (s) => ({
   customers: s.customers || '',
   gallonsSold: s.gallonsSold || '',
@@ -156,16 +199,20 @@ Propose new rates for this class only.`;
           <h2 style={{ fontSize: 15, color: 'var(--teal)', marginBottom: 3 }}>Customer Classes & Rates</h2>
           <p style={{ color: 'var(--mid)', fontSize: 12 }}>Enter rates in $/1,000 gallons per block. Cumulative bill amounts auto-calculate at each tier level.</p>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
           <button className="btn b-out btn-sm" onClick={() => setShowImport(s => !s)} title="Bulk-paste classes from a spreadsheet">📋 Bulk Import</button>
+          <button className="btn b-out btn-sm" onClick={() => exportClassesCsv(classes, study)} title="Download a CSV of all enabled customer classes and tier rates">↓ Export CSV</button>
           <button className="btn b-out btn-sm" onClick={copyAllCurrentToProposed} title="Copy current rates to proposed for all enabled classes">⇉ Copy All Cur→Prop</button>
           <button
             className="btn b-lime btn-sm"
             onClick={suggestRates}
             disabled={aiBusy || !hasApiKey()}
+            aria-label="Use AI to suggest a tier rate structure for the selected customer class"
             title={hasApiKey() ? `Use AI to suggest a tier structure for ${sel?.name || 'this class'}` : 'Add an Anthropic API key in Step 7 → Settings to enable'}
           >
-            {aiBusy ? '✨ Thinking…' : '✨ AI Suggest Rates'}
+            {aiBusy
+              ? <><span className="spin" /> Thinking…</>
+              : '✨ AI Suggest Rates'}
           </button>
         </div>
       </div>

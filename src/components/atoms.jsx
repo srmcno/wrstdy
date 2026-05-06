@@ -1,15 +1,25 @@
-export const F = ({ label, hint, children }) => (
-  <div className="fld">
-    <label className="flb">{label}</label>
-    {children}
-    {hint && <span className="fhn">{hint}</span>}
-  </div>
-);
+import { useId, cloneElement, isValidElement } from 'react';
 
-export const $I = ({ value, onChange, placeholder = '0.00' }) => (
+// Field wrapper. Generates a unique id and associates the label with the
+// child input so screen readers and click-on-label both work. The child can
+// be any single form control (input/select/textarea or our $I component).
+export const F = ({ label, hint, required, children }) => {
+  const id = useId();
+  const child = isValidElement(children) ? cloneElement(children, { id, ...(required ? { required: true, 'aria-required': 'true' } : {}) }) : children;
+  return (
+    <div className="fld">
+      <label className={'flb' + (required ? ' req' : '')} htmlFor={id}>{label}</label>
+      {child}
+      {hint && <span className="fhn">{hint}</span>}
+    </div>
+  );
+};
+
+export const $I = ({ value, onChange, placeholder = '0.00', id, required }) => (
   <div className="cw">
-    <span className="cs">$</span>
+    <span className="cs" aria-hidden="true">$</span>
     <input
+      id={id}
       className="inp ci"
       type="number"
       min="0"
@@ -17,6 +27,7 @@ export const $I = ({ value, onChange, placeholder = '0.00' }) => (
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      required={required}
     />
   </div>
 );

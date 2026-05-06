@@ -1,9 +1,9 @@
 import { fmt } from '../lib/calc.js';
 import { statusMeta } from '../lib/status.js';
 
-export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, onExport, onHome }) {
+export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, onExport, onHome, mobileOpen }) {
   return (
-    <nav className="sb no-print">
+    <nav className={'sb no-print' + (mobileOpen ? ' open' : '')}>
       <div className="sb-hd">
         <div className="sb-lb">Rate Studies</div>
         <button className="btn b-lime btn-fw" onClick={onCreate}>+ New Study</button>

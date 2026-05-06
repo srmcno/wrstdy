@@ -2,9 +2,16 @@ import { SEAL } from '../lib/seal.js';
 import { VER } from '../lib/constants.js';
 import { TextSizeMenu } from './TextSizeMenu.jsx';
 
-export function Header() {
+export function Header({ onMenuToggle }) {
   return (
     <header className="hdr no-print">
+      <button
+        className="sb-toggle"
+        aria-label="Toggle navigation menu"
+        onClick={onMenuToggle}
+      >
+        <span aria-hidden="true">☰</span>
+      </button>
       <img src={SEAL} alt="Choctaw Nation Great Seal" className="seal" />
       <div className="bn">
         <div className="bn-n">CHOCTAW NATION</div>
