@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { defBudget } from '../lib/state.js';
+import { DEFAULT_SCENARIO_ADJUSTMENTS, scenarioForClasses } from '../lib/scenarios.js';
 import { budgetTotal, totalRevenue, classMonthlyIncome, affordabilityIndex, nv, fmt } from '../lib/calc.js';
 
-export function Step6({ study }) {
+export function Step6({ study, onField }) {
   const classes = study.classes || [];
   const mhi = study.demographics?.medianMonthlyHHI;
   const propBT = budgetTotal(study.propBudget || defBudget());
@@ -44,7 +44,7 @@ export function Step6({ study }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {presets.map(p => (
             <div key={p.label} style={{ textAlign: 'center' }}>
-              <button className="btn b-out btn-sm" onClick={p.action}>{p.label}</button>
+              <button className="btn b-out btn-sm" onClick={() => applyScenario(p.adjustments, p.basis, p.label)}>{p.label}</button>
               <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 3 }}>{p.hint}</div>
             </div>
           ))}
