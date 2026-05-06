@@ -1,4 +1,5 @@
 import { fmt } from '../lib/calc.js';
+import { statusMeta } from '../lib/status.js';
 
 export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, onExport, onHome }) {
   return (
@@ -27,10 +28,10 @@ export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, o
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
                 <div className="sb-nm" style={{ flex: 1 }}>{s.name}</div>
                 <span
-                  className={'badge ' + (s.status === 'complete' ? 'bc' : s.status === 'in-progress' ? 'bp' : 'bd')}
+                  className={'badge ' + statusMeta(s.status).sidebarClass}
                   style={{ flexShrink: 0 }}
                 >
-                  {s.status === 'complete' ? 'done' : s.status === 'in-progress' ? 'active' : 'draft'}
+                  {statusMeta(s.status).label}
                 </span>
               </div>
               <div className="sb-sb">{s.systemInfo?.systemName || 'No system assigned'}</div>

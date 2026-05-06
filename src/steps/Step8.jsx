@@ -7,6 +7,7 @@ import {
   affordabilityIndex, debtToIncome, nv, fmt
 } from '../lib/calc.js';
 import { buildReport, safeFileName } from '../lib/exporters/data.js';
+import { statusMeta } from '../lib/status.js';
 
 export function Step8({ study, onField }) {
   const classes = study.classes || [];
@@ -36,6 +37,12 @@ export function Step8({ study, onField }) {
 
   const baseName = safeFileName(study.systemInfo?.systemName || study.name || 'water-rate-study');
   const yearTag = study.systemInfo?.studyYear || new Date().getFullYear();
+  const status = statusMeta(study.status);
+  const isComplete = study.status === 'complete';
+
+  function setReportStatus(nextStatus) {
+    onField('status', nextStatus);
+  }
 
   async function doExport(kind) {
     setExportErr('');
@@ -70,7 +77,24 @@ export function Step8({ study, onField }) {
           <h2 style={{ fontSize: 15, color: 'var(--teal)', marginBottom: 3 }}>Final Report</h2>
           <p style={{ color: 'var(--mid)', fontSize: 12 }}>Board-ready report. Export to PDF for distribution, or to Word (.docx) to edit before submission.</p>
         </div>
-        <div className="no-print" style={{ display: 'flex', gap: 6 }}>
+        <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {isComplete ? (
+            <button
+              className="btn b-out btn-sm"
+              onClick={() => setReportStatus('in-progress')}
+              title="Reopen this study so dashboard, sidebar, and map status return to In Progress."
+            >
+              ↩ Reopen
+            </button>
+          ) : (
+            <button
+              className="btn b-lime btn-sm"
+              onClick={() => setReportStatus('complete')}
+              title="Mark this final report complete across dashboard, sidebar, and map status views."
+            >
+              ✓ Mark Complete
+            </button>
+          )}
           <button className="btn b-out btn-sm" onClick={() => doExport('docx')} disabled={!!busy}>
             {busy === 'docx' ? 'Building…' : '📝 Export Word'}
           </button>
@@ -79,6 +103,20 @@ export function Step8({ study, onField }) {
           </button>
           <button className="btn b-teal btn-sm" onClick={() => window.print()}>🖨 Print</button>
         </div>
+      </div>
+      <div className="al al-i no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <span>
+          <strong>Report status:</strong>{' '}
+          <span className={'bs ' + status.badgeClass}>{status.label}</span>
+          {isComplete
+            ? ' This study is marked complete for dashboard, sidebar, and map views.'
+            : ' When the final report is ready for distribution, mark it complete here.'}
+        </span>
+        {isComplete ? (
+          <button className="btn b-out btn-sm" onClick={() => setReportStatus('in-progress')}>Mark In Progress</button>
+        ) : (
+          <button className="btn b-lime btn-sm" onClick={() => setReportStatus('complete')}>Mark Complete</button>
+        )}
       </div>
       {exportErr && <div className="al al-e no-print">{exportErr}</div>}
       <div className="print-only" style={{ marginBottom: 16, paddingBottom: 12, borderBottom: '2px solid #1E3D3B' }}>
