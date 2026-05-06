@@ -1,11 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import { defBudget } from '../lib/state.js';
 import {
   budgetTotal, totalRevenue, classMonthlyIncome,
   affordabilityIndex, cost5000, calc5Yr, debtToIncome, baseCoverage,
   costPer1000, operatingRatio, nv, fmt
 } from '../lib/calc.js';
-import { chat, KEY_STORAGE, BUILD_KEY, AI_PROXY_URL, USE_AI_PROXY, MODEL_HEAVY as MODEL, safeGet, safeSet } from '../lib/ai.js';
+import { chat, KEY_STORAGE, BUILD_KEY, AI_PROXY_URL, USE_AI_PROXY, safeGet, safeSet } from '../lib/ai.js';
+import { ConfirmModal } from '../components/ConfirmModal.jsx';
+import { startAiJob, isAiBusy, subscribeAiJobs } from '../lib/ai-jobs.js';
 
 const SYSTEM_PROMPT = `You are a senior financial analyst for the Choctaw Nation Office of Water Resource Management (OWRM). You write rate-study analyses for tribal public water systems whose boards include non-experts.
 
@@ -77,13 +79,20 @@ function buildContext(study) {
   ].join('\n');
 }
 
-// Step 7's call site uses the shared chat() from lib/ai.js with our system prompt.
-
 export function Step7({ study, onField }) {
-  const [loading, setLoading] = useState(false);
+  // `loading` lives in the module-level ai-jobs registry instead of local
+  // state so an in-flight Generate/Follow-up survives navigation away from
+  // Step 7 (and is still in flight when the user returns). The component
+  // re-renders whenever the registry's busy set changes.
+  const loading = useSyncExternalStore(
+    subscribeAiJobs,
+    () => isAiBusy(study.id),
+    () => false,
+  );
   const [err, setErr] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [apiKey, setApiKey] = useState(() => USE_AI_PROXY ? '' : safeGet(KEY_STORAGE) || BUILD_KEY);
+  const [confirmClear, setConfirmClear] = useState(false);
   const usingBuildKey = !USE_AI_PROXY && !safeGet(KEY_STORAGE) && !!BUILD_KEY;
   const [followUp, setFollowUp] = useState('');
   const scrollRef = useRef(null);
@@ -92,15 +101,18 @@ export function Step7({ study, onField }) {
   // We store the full history on the study so it persists across sessions.
   // Migration: studies created before chat support only have aiAnalysis.content.
   // Surface that as a synthetic single-turn history so the user can see and follow up on it.
-  const rawHistory = study.aiHistory || [];
-  const legacy = rawHistory.length === 0 && study.aiAnalysis?.content
+  const rawHistory = Array.isArray(study.aiHistory) ? study.aiHistory : [];
+  const legacyContent = study.aiAnalysis && typeof study.aiAnalysis === 'object'
+    ? (study.aiAnalysis.content || '')
+    : (typeof study.aiAnalysis === 'string' ? study.aiAnalysis : '');
+  const legacy = rawHistory.length === 0 && legacyContent
     ? [
         { role: 'user', content: '(Original analysis generated before chat history was tracked. Send a follow-up below to refine it.)' },
-        { role: 'assistant', content: study.aiAnalysis.content },
+        { role: 'assistant', content: legacyContent },
       ]
     : null;
   const history = legacy || rawHistory;
-  const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
+  const lastAssistantMsg = [...history].reverse().find(m => m && m.role === 'assistant');
   const lastAnalysis = lastAssistantMsg?.content || '';
 
   useEffect(() => {
@@ -112,52 +124,60 @@ export function Step7({ study, onField }) {
     setShowKey(false);
   };
 
-  async function runInitial() {
-    if (!USE_AI_PROXY && !apiKey) { setErr('Set your Anthropic API key first (Settings).'); return; }
+  function runInitial() {
+    if (!USE_AI_PROXY && !apiKey) { setErr('Set your AI API key first (Settings).'); return; }
     setErr('');
-    setLoading(true);
-    try {
-      const ctx = buildContext(study);
-      const userMsg = `${ctx}\n\n---\n\nPlease analyze this water rate study and produce the standard board-ready report (Executive Summary → Financial Health → Rate Justification → Affordability → Risk Flags → Recommendations → Suggested Motion Language). Be specific with numbers.`;
-      const newHistory = [{ role: 'user', content: userMsg }];
-      const reply = await chat({ system: SYSTEM_PROMPT, history: newHistory });
-      const finalHistory = [...newHistory, { role: 'assistant', content: reply }];
-      onField({
-        aiHistory: finalHistory,
-        aiAnalysis: { content: reply, generatedAt: new Date().toISOString() },
-      });
-    } catch (e) {
-      setErr(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
+    // Snapshot study at click time, but write the result via onField (patch
+    // form) so it merges against the LATEST study in App state. Fire-and-
+    // forget: startAiJob keeps the promise alive even if Step 7 unmounts.
+    startAiJob(study.id, async () => {
+      try {
+        const ctx = buildContext(study);
+        const userMsg = `${ctx}\n\n---\n\nPlease analyze this water rate study and produce the standard board-ready report (Executive Summary → Financial Health → Rate Justification → Affordability → Risk Flags → Recommendations → Suggested Motion Language). Be specific with numbers.`;
+        const newHistory = [{ role: 'user', content: userMsg }];
+        const reply = await chat({ system: SYSTEM_PROMPT, history: newHistory });
+        const replyText = typeof reply === 'string' ? reply : String(reply || '');
+        const finalHistory = [...newHistory, { role: 'assistant', content: replyText }];
+        onField({
+          aiHistory: finalHistory,
+          aiAnalysis: { content: replyText, generatedAt: new Date().toISOString() },
+        });
+      } catch (e) {
+        console.error('AI analysis failed', e);
+        setErr(e.message || String(e));
+      }
+    });
   }
 
-  async function sendFollowUp() {
+  function sendFollowUp() {
     const text = followUp.trim();
     if (!text) return;
-    if (!USE_AI_PROXY && !apiKey) { setErr('Set your Anthropic API key first (Settings).'); return; }
+    if (!USE_AI_PROXY && !apiKey) { setErr('Set your AI API key first (Settings).'); return; }
     setErr('');
-    setLoading(true);
-    try {
-      const newHistory = [...history, { role: 'user', content: text }];
-      const reply = await chat({ system: SYSTEM_PROMPT, history: newHistory });
-      const finalHistory = [...newHistory, { role: 'assistant', content: reply }];
-      onField({
-        aiHistory: finalHistory,
-        aiAnalysis: { content: reply, generatedAt: new Date().toISOString() },
-      });
-      setFollowUp('');
-    } catch (e) {
-      setErr(e.message || String(e));
-    } finally {
-      setLoading(false);
-    }
+    setFollowUp('');
+    const historyAtClick = history;
+    startAiJob(study.id, async () => {
+      try {
+        const newHistory = [...historyAtClick, { role: 'user', content: text }];
+        const reply = await chat({ system: SYSTEM_PROMPT, history: newHistory });
+        const replyText = typeof reply === 'string' ? reply : String(reply || '');
+        const finalHistory = [...newHistory, { role: 'assistant', content: replyText }];
+        onField({
+          aiHistory: finalHistory,
+          aiAnalysis: { content: replyText, generatedAt: new Date().toISOString() },
+        });
+      } catch (e) {
+        console.error('AI follow-up failed', e);
+        setErr(e.message || String(e));
+        // Restore the unsent text so the user can retry without retyping
+        setFollowUp(text);
+      }
+    });
   }
 
   function clearConversation() {
-    if (!window.confirm('Discard the current AI conversation and start over? The latest analysis will also be removed from the report.')) return;
     onField({ aiHistory: [], aiAnalysis: { content: '', generatedAt: '' } });
+    setConfirmClear(false);
   }
 
   // The first user message is huge (full data dump). Hide it from the UI.
@@ -183,33 +203,42 @@ export function Step7({ study, onField }) {
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn b-out btn-sm" onClick={() => setShowKey(s => !s)} title="AI connection settings">⚙ Settings</button>
           {history.length > 0 && (
-            <button className="btn b-out btn-sm" onClick={clearConversation}>Clear</button>
+            <button className="btn b-out btn-sm" onClick={() => setConfirmClear(true)}>Clear</button>
           )}
           {history.length === 0 && (
             <button className="btn b-teal" onClick={runInitial} disabled={loading}>
-              {loading ? 'Generating…' : 'Generate Analysis'}
+              {loading ? <><span className="spin" /> Generating…</> : 'Generate Analysis'}
             </button>
           )}
         </div>
       </div>
+
+      {confirmClear && (
+        <ConfirmModal
+          title="Clear AI conversation?"
+          message="The current analysis and chat history will be discarded, and the latest reply will be removed from the report. Your study data is unaffected."
+          confirmLabel="Clear conversation"
+          onConfirm={clearConversation}
+          onCancel={() => setConfirmClear(false)}
+        />
+      )}
 
       {showKey && (
         <div className="card" style={{ background: 'var(--surface)' }}>
           <div className="sh">AI Connection</div>
           {USE_AI_PROXY ? (
             <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 0 }}>
-              Using the configured server-side AI proxy at <code>{AI_PROXY_URL}</code>. Anthropic API keys stay on the proxy server and are not stored in this browser.
+              Using the configured server-side AI proxy at <code>{AI_PROXY_URL}</code>. API keys stay on the proxy server and are not stored in this browser.
             </p>
           ) : (
             <>
               <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 8 }}>
                 {usingBuildKey
-                  ? 'Using the API key baked in at build time (VITE_ANTHROPIC_KEY). Override here for this device only. Use this only for trusted local/internal builds.'
+                  ? 'Using the API key baked in at build time. Override here for this device only. Use this only for trusted local/internal builds.'
                   : "Local/internal direct-browser mode: stored in this browser's localStorage and required only for the AI analysis feature."}
-                {' '}Get a key at <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>console.anthropic.com</a>.
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input className="inp" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-ant-..." style={{ flex: 1 }} />
+                <input className="inp" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API key" style={{ flex: 1 }} />
                 <button className="btn b-lime btn-sm" onClick={saveKey}>Save</button>
               </div>
             </>
@@ -226,7 +255,7 @@ export function Step7({ study, onField }) {
               <div style={{ fontSize: 28, marginBottom: 10, opacity: .4 }}>🤖</div>
               <div style={{ fontSize: 12 }}>Click "Generate Analysis" to produce a board-ready analysis using the data captured across all steps.</div>
               <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 8 }}>
-                Uses {MODEL}. Requires data in Steps 1–5 for best results.
+                Best results when Steps 1–5 have full data.
               </div>
             </div>
           ) : (
@@ -249,14 +278,14 @@ export function Step7({ study, onField }) {
                   color: 'var(--text)',
                   whiteSpace: 'pre-wrap',
                 }}>
-                  {m.content}
+                  {String(m.content ?? '')}
                 </div>
               </div>
             ))
           )}
           {loading && (
             <div style={{ fontSize: 11, color: 'var(--dim)', fontStyle: 'italic', textAlign: 'center', padding: 8 }}>
-              Thinking…
+              <span className="spin" /> Thinking…
             </div>
           )}
         </div>

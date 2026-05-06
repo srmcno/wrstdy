@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { VER } from './lib/constants.js';
-import { loadDB, saveDB, onSaveStatus } from './lib/state.js';
+import { loadDB, saveDB, onSaveStatus, newStudy } from './lib/state.js';
 import { Header } from './components/Header.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
 import { Dashboard } from './components/Dashboard.jsx';
@@ -44,7 +44,36 @@ export default function App() {
     setShowNew(false);
     pushToast(`Created "${s.name}"`);
   };
-  const update = (s) => setStudies(p => p.map(x => x.id === s.id ? s : x));
+
+  // Spawn a new study pre-populated from a known PWS record (clicked on the
+  // map). Saves the user from re-typing the system name, county, water source,
+  // and coordinates — they only need to fill in financial data.
+  const createFromKnown = (k) => {
+    const s = newStudy(`${k.name} — Rate Study ${new Date().getFullYear()}`);
+    s.systemInfo.systemName = k.name;
+    s.systemInfo.county = k.county;
+    s.systemInfo.address = k.address || '';
+    s.systemInfo.latitude = k.lat;
+    s.systemInfo.longitude = k.lng;
+    s.systemInfo.waterBodySource = k.waterBody || '';
+    if (k.sourceType) s.systemInfo.sourceType = k.sourceType;
+    if (k.systemType) s.systemInfo.systemType = k.systemType;
+    if (k.populationServed) s.systemInfo.populationServed = String(k.populationServed);
+    create(s);
+  };
+  // Update accepts EITHER (id, patch) or (study). The patch form merges
+  // against the latest state — important for async work whose closures may
+  // hold a stale study snapshot (e.g. AI requests in Step 7 that resolve
+  // after the user has navigated away and edited other steps).
+  const update = (idOrStudy, patch) => {
+    if (typeof idOrStudy === 'string') {
+      setStudies(p => p.map(x => x.id === idOrStudy
+        ? { ...x, ...patch, updatedAt: new Date().toISOString() }
+        : x));
+    } else {
+      setStudies(p => p.map(x => x.id === idOrStudy.id ? idOrStudy : x));
+    }
+  };
   const del = (id) => {
     const s = studies.find(x => x.id === id);
     setStudies(p => p.filter(x => x.id !== id));
@@ -117,7 +146,7 @@ export default function App() {
         <main className="main">
           {active
             ? <Workspace study={active} onUpdate={update} onDelete={del} />
-            : <Dashboard studies={studies} onSelect={setActiveId} onCreate={() => setShowNew(true)} onLoadSample={create} />
+            : <Dashboard studies={studies} onSelect={setActiveId} onCreate={() => setShowNew(true)} onLoadSample={create} onCreateFromKnown={createFromKnown} />
           }
         </main>
       </div>

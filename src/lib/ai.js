@@ -1,17 +1,18 @@
-// Shared Anthropic API client + key plumbing. Used by Step 7 (chat),
+// Shared AI client + key plumbing. Used by Step 7 (chat),
 // Step 2 (rate suggestions), Step 3 (budget review), Step 5 (forecast),
 // and the inline "explain this metric" tooltips.
 //
 // Production deployments should set VITE_AI_PROXY_URL so browser requests go
-// to a server-side proxy that owns the Anthropic API key. Browser-direct
-// Anthropic access remains available only as an explicit local/internal mode
-// when no proxy URL is configured.
+// to a server-side proxy that owns the upstream API key. Browser-direct
+// access remains available only as an explicit local/internal mode when no
+// proxy URL is configured.
 
 export const KEY_STORAGE = 'wrs-anthropic-key';
 export const BUILD_KEY = import.meta.env.VITE_ANTHROPIC_KEY || '';
 export const AI_PROXY_URL = (import.meta.env.VITE_AI_PROXY_URL || '').trim();
 export const DIRECT_ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 export const USE_AI_PROXY = !!AI_PROXY_URL;
+// Underlying model identifiers — internal only, never displayed in the UI.
 export const MODEL_HEAVY = 'claude-opus-4-7';   // long-form analysis
 export const MODEL_LIGHT = 'claude-haiku-4-5-20251001'; // quick suggestions
 
@@ -43,7 +44,7 @@ async function postMessages(payload) {
 
   if (!USE_AI_PROXY) {
     const apiKey = getApiKey();
-    if (!apiKey) throw new Error('No Anthropic API key configured. Open Step 7 → Settings to add one.');
+    if (!apiKey) throw new Error('No AI API key configured. Open Step 7 → Settings to add one.');
     headers['x-api-key'] = apiKey;
     headers['anthropic-version'] = '2023-06-01';
     headers['anthropic-dangerous-direct-browser-access'] = 'true';
@@ -56,7 +57,7 @@ async function postMessages(payload) {
   });
   if (!resp.ok) {
     const t = await resp.text();
-    throw new Error(`HTTP ${resp.status}: ${t.slice(0, 240)}`);
+    throw new Error(`AI request failed (HTTP ${resp.status}): ${t.slice(0, 240)}`);
   }
   const data = await resp.json();
   return assistantText(data);

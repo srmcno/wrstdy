@@ -192,7 +192,7 @@ State: Oklahoma`;
               onClick={aiEstimate}
               disabled={aiBusy || !hasApiKey()}
               aria-label="Estimate system info using AI"
-              title={hasApiKey() ? 'Use AI to estimate blank fields from the system name + county' : 'Add an Anthropic API key in Step 7 → Settings to enable'}
+              title={hasApiKey() ? 'Use AI to estimate blank fields from the system name + county' : 'Add an API key in Step 7 → Settings to enable'}
             >
               {aiBusy
                 ? <><span className="spin" /> Estimating…</>

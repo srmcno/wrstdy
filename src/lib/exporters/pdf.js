@@ -80,10 +80,15 @@ function drawHeader(doc, report, sealDataUrl) {
   // Right-side metadata — measure widths so we never overflow the right margin.
   // Tagline + date are right-aligned to PAGE_W - 10 so they have a 10 mm
   // safe gap from the page edge.
+  // jsPDF's built-in helvetica is WinAnsi-encoded and renders most non-Latin
+  // glyphs (✦, ❖, →, ✓) as missing-glyph boxes or extra-wide spaces, which
+  // is what was causing the FAITH/FAMILY/CULTURE line to "space out and cut
+  // off" on Page 1. The safe separators in WinAnsi are bullet (•) and en/em
+  // dashes — we use bullet here for visual consistency with the on-screen UI.
   const rightX = PAGE_W - 10;
   doc.setFontSize(7);
   doc.setTextColor(220, 220, 220);
-  doc.text('FAITH ❖ FAMILY ❖ CULTURE', rightX, 12, { align: 'right' });
+  doc.text('FAITH • FAMILY • CULTURE', rightX, 12, { align: 'right' });
   const dateStr = new Date(report.generatedAt).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -320,10 +325,13 @@ export async function exportPDF(report, filename) {
   pdfDoc.setFont(FONT, 'normal');
   pdfDoc.setFontSize(8);
   pdfDoc.setTextColor(...MID);
+  // Use the en-dash (–, U+2013, valid in WinAnsi) instead of → arrows here —
+  // the right-arrow glyph is missing from helvetica's encoding and renders as
+  // a wide blank space, which broke the "Cur → Prop" layout on the cover.
   const cells = [
-    ['Cost / 1,000 gal (Cur → Prop)', `${fmt.c(report.curCP1K)} → ${fmt.c(report.propCP1K)}`],
-    ['Operating Ratio (Cur → Prop)', `${report.curOR.toFixed(2)} → ${report.propOR.toFixed(2)}`],
-    ['5,000 gal Bill (Cur → Prop)', `${fmt.c(report.cost5kCur)} → ${fmt.c(report.cost5kProp)}`],
+    ['Cost / 1,000 gal (Cur to Prop)', `${fmt.c(report.curCP1K)} – ${fmt.c(report.propCP1K)}`],
+    ['Operating Ratio (Cur to Prop)', `${report.curOR.toFixed(2)} – ${report.propOR.toFixed(2)}`],
+    ['5,000 gal Bill (Cur to Prop)', `${fmt.c(report.cost5kCur)} – ${fmt.c(report.cost5kProp)}`],
     ['Affordability Index (Prop)', report.mhi ? fmt.p(report.propAI) : 'MHI not entered'],
   ];
   cells.forEach((c, i) => {
@@ -378,7 +386,7 @@ export async function exportPDF(report, filename) {
     head: [['Metric', 'Current', 'Proposed', 'Benchmark', 'Status']],
     body: report.scorecard.map(r => [
       r.metric, r.cur, r.prop, r.benchmark,
-      r.propOk === null ? 'N/A' : (r.propOk ? '✓ Healthy' : '✗ Below'),
+      r.propOk === null ? 'N/A' : (r.propOk ? 'Healthy' : 'Below target'),
     ]),
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     didParseCell: (data) => {
@@ -486,7 +494,7 @@ export async function exportPDF(report, filename) {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
     body: [
-      ['Operating Ratio', report.curOR.toFixed(2), report.propOR.toFixed(2), report.propOR >= 1.25 ? '✓ Healthy' : report.propOR >= 1 ? '⚠ Break-even' : '✗ Below'],
+      ['Operating Ratio', report.curOR.toFixed(2), report.propOR.toFixed(2), report.propOR >= 1.25 ? 'Healthy' : report.propOR >= 1 ? 'Break-even' : 'Below target'],
     ],
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
   }));
@@ -519,7 +527,7 @@ export async function exportPDF(report, filename) {
   autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
-    body: [['DTI', fmt.p(report.curDTI), fmt.p(report.propDTI), report.propDTI < 0.45 ? '✓ Manageable' : '✗ High']],
+    body: [['DTI', fmt.p(report.curDTI), fmt.p(report.propDTI), report.propDTI < 0.45 ? 'Manageable' : 'High']],
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
   }));
   y = pdfDoc.lastAutoTable.finalY + 8;

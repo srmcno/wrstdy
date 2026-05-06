@@ -15,7 +15,7 @@ async function loadDistricts() {
   return mod.default || mod;
 }
 
-export function MapView({ studies, onSelect }) {
+export function MapView({ studies, onSelect, onCreateFromKnown }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const layersRef = useRef({ districts: null, labels: null });
@@ -118,15 +118,30 @@ export function MapView({ studies, onSelect }) {
       layersRef.current = { districts: districtLayer, labels: labelLayer };
 
       // Known PWS reference markers
-      KNOWN_SYSTEMS.forEach(s => {
-        L.marker([s.lat, s.lng], { icon: knownIcon })
-          .bindPopup(`<div style="font-family:Gill Sans Nova,Gill Sans MT,sans-serif">
-            <div style="font-weight:600;color:#1E3D3B;font-size:13px">${escapeHtml(s.name)}</div>
-            <div style="color:#475569;font-size:11px;margin-top:2px">${escapeHtml(s.county)} County</div>
-            <div style="color:#475569;font-size:11px">Source: ${escapeHtml(s.waterBody)}</div>
-            <div style="color:#94a3b8;font-size:10px;margin-top:4px;font-style:italic">Reference location — no study yet</div>
-          </div>`)
-          .addTo(map);
+      KNOWN_SYSTEMS.forEach((s, idx) => {
+        const marker = L.marker([s.lat, s.lng], { icon: knownIcon }).addTo(map);
+        const sourceLabel = s.sourceType === 'surface' ? 'Surface water'
+          : s.sourceType === 'groundwater' ? 'Groundwater (well)'
+          : s.sourceType === 'purchased' ? 'Purchased / Wholesale'
+          : s.sourceType === 'mixed' ? 'Mixed sources'
+          : '—';
+        const popupHtml = `<div style="font-family:Gill Sans Nova,Gill Sans MT,sans-serif;min-width:200px;max-width:260px">
+          <div style="font-weight:600;color:#1E3D3B;font-size:13px;line-height:1.3">${escapeHtml(s.name)}</div>
+          <div style="color:#475569;font-size:11px;margin-top:3px">${escapeHtml(s.county)} County, OK</div>
+          ${s.address ? `<div style="color:#475569;font-size:11px">${escapeHtml(s.address)}</div>` : ''}
+          <div style="margin-top:6px;font-size:11px;color:#475569;line-height:1.5">
+            <div><strong style="color:#1E3D3B">Source:</strong> ${escapeHtml(s.waterBody)}</div>
+            <div><strong style="color:#1E3D3B">Type:</strong> ${escapeHtml(sourceLabel)}</div>
+            ${s.populationServed ? `<div><strong style="color:#1E3D3B">Pop. served:</strong> ~${escapeHtml(s.populationServed)}</div>` : ''}
+          </div>
+          <div style="color:#94a3b8;font-size:10px;margin-top:6px;font-style:italic">Reference location — no study yet</div>
+          <button data-known-idx="${idx}" class="map-known-btn" style="margin-top:8px;padding:5px 10px;background:#76B900;color:#0a1f00;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;width:100%">+ Start Study from this System</button>
+        </div>`;
+        marker.bindPopup(popupHtml);
+        marker.on('popupopen', (e) => {
+          const btn = e.popup._contentNode.querySelector('.map-known-btn');
+          if (btn) btn.onclick = () => onCreateFromKnown?.(s);
+        });
       });
 
       // User study markers

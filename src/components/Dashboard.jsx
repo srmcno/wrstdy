@@ -4,7 +4,7 @@ import { MapView } from './MapView.jsx';
 import { makeSampleStudy } from '../lib/sample-study.js';
 import { statusMeta } from '../lib/status.js';
 
-export function Dashboard({ studies, onSelect, onCreate, onLoadSample }) {
+export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateFromKnown }) {
   const [view, setView] = useState('list'); // 'list' | 'map'
   const mappedCount = (studies || []).filter(s => s.systemInfo?.latitude != null).length;
 
@@ -67,7 +67,7 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample }) {
               <button className="btn b-lime btn-sm" onClick={onCreate}>+ New Study</button>
             </div>
           </div>
-          <MapView studies={studies} onSelect={onSelect} />
+          <MapView studies={studies} onSelect={onSelect} onCreateFromKnown={onCreateFromKnown} />
         </>
       ) : (
         <>

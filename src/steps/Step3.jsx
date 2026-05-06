@@ -119,7 +119,7 @@ Flag concerns and missing categories.`;
             className="btn b-lime btn-sm"
             onClick={reviewBudget}
             disabled={aiBusy || !hasApiKey()}
-            title={hasApiKey() ? 'Have AI flag unusual or missing budget items' : 'Add an Anthropic API key in Step 7 → Settings to enable'}
+            title={hasApiKey() ? 'Have AI flag unusual or missing budget items' : 'Add an API key in Step 7 → Settings to enable'}
           >
             {aiBusy ? '✨ Reviewing…' : '✨ AI Review Budget'}
           </button>
