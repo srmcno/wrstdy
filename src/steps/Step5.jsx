@@ -20,8 +20,11 @@ export function Step5({ study, onField }) {
           <F label="Inflation Rate (%/yr)" hint="Applied to annual expenses">
             <input className="inp" type="number" step="0.1" value={fc.inflationRate || '3'} onChange={(e) => upd('inflationRate', e.target.value)} />
           </F>
-          <F label="Revenue Growth (%/yr)" hint="Account growth or usage increase">
+          <F label="Revenue Growth (%/yr)" hint="Usage/rateable revenue increase">
             <input className="inp" type="number" step="0.1" value={fc.revenueGrowth || '0'} onChange={(e) => upd('revenueGrowth', e.target.value)} />
+          </F>
+          <F label="Account Growth (%/yr)" hint="Customer count growth; multiplied with revenue growth">
+            <input className="inp" type="number" step="0.1" value={fc.accountGrowth || '0'} onChange={(e) => upd('accountGrowth', e.target.value)} />
           </F>
           <F label="Beginning Fund Balance ($)">
             <$I value={fc.beginFundBalance || '0'} onChange={(v) => upd('beginFundBalance', v)} />
@@ -49,7 +52,7 @@ export function Step5({ study, onField }) {
           </tbody>
         </table>
         <div className="al al-i" style={{ marginTop: 12, fontSize: 11 }}>
-          3% inflation applied to expenses year-over-year. Revenue held constant at Year 1 rates unless growth rate entered above. Adjust forecast assumptions to model different scenarios.
+          Expenses inflate annually using the forecast inflation rate. Current and proposed revenue grow year-over-year by the revenue growth and account growth assumptions entered above, combined multiplicatively. Adjust forecast assumptions to model different scenarios.
         </div>
       </div>
       <div className="card">

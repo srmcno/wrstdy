@@ -99,8 +99,11 @@ export function baseCoverage(classes, isProposed, expTotal) {
   return expTotal > 0 ? fixed / expTotal : 0;
 }
 
-export function calc5Yr(classes, curBudget, propBudget, forecast) {
+export function calc5Yr(classes, curBudget, propBudget, forecast = {}) {
   const inf = 1 + nv(forecast.inflationRate) / 100;
+  const revenueGrowth = nv(forecast.revenueGrowth) / 100;
+  const accountGrowth = nv(forecast.accountGrowth) / 100;
+  const revGrowthFactor = (1 + revenueGrowth) * (1 + accountGrowth);
   const curRev = totalRevenue(classes, false).annual;
   const propRev = totalRevenue(classes, true).annual;
   const expBase = budgetTotal(propBudget).total * 12;
@@ -112,11 +115,14 @@ export function calc5Yr(classes, curBudget, propBudget, forecast) {
   let exp = expBase;
   for (let i = 0; i < 5; i++) {
     if (i > 0) exp *= inf;
-    rows.curRevArr.push(curRev);
-    rows.propRevArr.push(propRev);
+    const revMultiplier = Math.pow(revGrowthFactor, i);
+    const curYrRev = curRev * revMultiplier;
+    const propYrRev = propRev * revMultiplier;
+    rows.curRevArr.push(curYrRev);
+    rows.propRevArr.push(propYrRev);
     rows.expArr.push(exp);
-    curFB += curRev - exp; rows.curFBArr.push(curFB);
-    propFB += propRev - exp; rows.propFBArr.push(propFB);
+    curFB += curYrRev - exp; rows.curFBArr.push(curFB);
+    propFB += propYrRev - exp; rows.propFBArr.push(propFB);
     rows.targetArr.push(target);
   }
   return { yrs, ...rows };
