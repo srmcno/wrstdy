@@ -308,6 +308,32 @@ export async function exportDocx(report, filename, sealUint8) {
     ],
   ));
 
+  if (report.scenario?.rows?.length) {
+    children.push(H(`Active Scenario: ${report.scenario.label || 'Custom'}`, HeadingLevel.HEADING_2));
+    children.push(P(`Scenario monthly revenue is ${fmt.c(report.scenario.monthlyRevenue)}, which is ${(report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed)} versus proposed rates. Net monthly surplus / (deficit) after proposed expenses is ${(report.scenario.netMonthly >= 0 ? '+' : '') + fmt.c(report.scenario.netMonthly)}.`, { color: MID }));
+    children.push(buildTable(
+      [
+        { text: 'Class' }, { text: 'Proposed (Base)', align: AlignmentType.RIGHT },
+        { text: 'Multiplier', align: AlignmentType.RIGHT }, { text: 'Scenario Mo.', align: AlignmentType.RIGHT },
+        { text: 'vs. Proposed', align: AlignmentType.RIGHT },
+      ],
+      report.scenario.rows.map(r => [
+        r.name,
+        { text: fmt.c(r.base), align: AlignmentType.RIGHT },
+        { text: `${r.multiplier.toFixed(2)}x`, align: AlignmentType.RIGHT },
+        { text: fmt.c(r.monthly), align: AlignmentType.RIGHT },
+        { text: (r.delta >= 0 ? '+' : '') + fmt.c(r.delta), align: AlignmentType.RIGHT, color: r.delta >= 0 ? GREEN_DARK : RED },
+      ]),
+      [
+        'Total',
+        fmt.c(report.revProp.monthly),
+        '',
+        fmt.c(report.scenario.monthlyRevenue),
+        (report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed),
+      ],
+    ));
+  }
+
   if (report.expCats.length > 0) {
     children.push(P('Monthly Expense Breakdown', { bold: true, color: TEAL, after: 60 }));
     children.push(buildTable(

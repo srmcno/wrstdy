@@ -2,6 +2,7 @@
 // and DOCX exporters so the two outputs always agree on numbers.
 
 import { defBudget } from '../state.js';
+import { scenarioAdjustmentsForClasses } from '../scenarios.js';
 import {
   budgetTotal, totalRevenue, classMonthlyIncome,
   affordabilityIndex, debtToIncome, baseCoverage, operatingRatio,
@@ -66,6 +67,22 @@ export function buildReport(study) {
     ['Other', curBT.oth, propBT.oth],
   ].filter(r => r[1] > 0 || r[2] > 0).map(([label, cur, prop]) => ({ label, cur, prop, delta: prop - cur }));
 
+  const scenarioAdjustments = scenarioAdjustmentsForClasses(classes, study.activeScenario || {});
+  const scenarioRows = classes.filter(c => c.enabled).map(c => {
+    const base = classMonthlyIncome(c, true).monthly;
+    const multiplier = scenarioAdjustments[c.id] ?? 1;
+    const monthly = base * multiplier;
+    return {
+      name: c.name || c.id,
+      base,
+      multiplier,
+      monthly,
+      delta: monthly - base,
+    };
+  });
+  const scenarioMonthlyRevenue = scenarioRows.reduce((sum, row) => sum + row.monthly, 0);
+  const scenarioNetMonthly = scenarioMonthlyRevenue - propBT.total;
+
   const expBaseAnnual = propBT.total * 12;
   const fiveYearOutlook = proj.yrs.map((yr, i) => ({
     yr,
@@ -106,6 +123,16 @@ export function buildReport(study) {
     classRows,
     expCats,
     fiveYearOutlook,
+    scenario: {
+      label: study.activeScenario?.label || 'Custom',
+      adjustments: scenarioAdjustments,
+      rows: scenarioRows,
+      monthlyRevenue: scenarioMonthlyRevenue,
+      monthlyExpenses: propBT.total,
+      netMonthly: scenarioNetMonthly,
+      annualReserveCapacity: Math.max(0, scenarioNetMonthly * 12),
+      vsProposed: scenarioMonthlyRevenue - revProp.monthly,
+    },
     proj,
     aiAnalysis: study.aiAnalysis?.content || '',
     aiHistory: study.aiHistory || [],

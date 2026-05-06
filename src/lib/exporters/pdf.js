@@ -498,6 +498,42 @@ export async function exportPDF(report, filename) {
   });
   y = doc.lastAutoTable.finalY + 8;
 
+  if (report.scenario?.rows?.length) {
+    y = ensureSpace(doc, y, 60);
+    y = H2(doc, `Active Scenario: ${report.scenario.label || 'Custom'}`, y);
+    y = P(
+      doc,
+      `Scenario monthly revenue is ${fmt.c(report.scenario.monthlyRevenue)}, which is ${(report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed)} versus proposed rates. Net monthly surplus / (deficit) after proposed expenses is ${(report.scenario.netMonthly >= 0 ? '+' : '') + fmt.c(report.scenario.netMonthly)}.`,
+      y,
+      { color: MID, size: 9 },
+    );
+    y += 2;
+    autoTable(doc, {
+      startY: y,
+      head: [['Class', 'Proposed (Base)', 'Multiplier', 'Scenario Mo.', 'vs. Proposed']],
+      body: report.scenario.rows.map(r => [
+        r.name,
+        fmt.c(r.base),
+        `${r.multiplier.toFixed(2)}x`,
+        fmt.c(r.monthly),
+        (r.delta >= 0 ? '+' : '') + fmt.c(r.delta),
+      ]),
+      foot: [[
+        'Total',
+        fmt.c(report.revProp.monthly),
+        '',
+        fmt.c(report.scenario.monthlyRevenue),
+        (report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed),
+      ]],
+      styles: { font: FONT, fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: TEAL, textColor: [255, 255, 255] },
+      footStyles: { fillColor: TEAL, textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+      margin: { left: 15, right: 15 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
   if (report.expCats.length > 0) {
     y = H2(doc, 'Monthly Expense Breakdown', y);
     autoTable(doc, {

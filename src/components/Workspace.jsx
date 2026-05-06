@@ -83,7 +83,7 @@ export function Workspace({ study, onUpdate, onDelete }) {
         {step === 2 && <Step3 study={study} onField={field} />}
         {step === 3 && <Step4 study={study} />}
         {step === 4 && <Step5 study={study} onField={field} />}
-        {step === 5 && <Step6 study={study} />}
+        {step === 5 && <Step6 study={study} onField={field} />}
         {step === 6 && <Step7 study={study} onField={field} />}
         {step === 7 && <Step8 study={study} onField={field} />}
       </div>
