@@ -140,7 +140,17 @@ export function MapView({ studies, onSelect, onCreateFromKnown }) {
         marker.bindPopup(popupHtml);
         marker.on('popupopen', (e) => {
           const btn = e.popup._contentNode.querySelector('.map-known-btn');
-          if (btn) btn.onclick = () => onCreateFromKnown?.(s);
+          if (btn) {
+            btn.onclick = () => {
+              // Close popup synchronously, then defer the React state update.
+              // If we trigger an unmount of MapView while still inside Leaflet's
+              // popup-click event handler, Leaflet throws when it tries to clean
+              // up the popup after the map element has been removed — which is
+              // what produced the "Something went wrong" error boundary.
+              try { marker.closePopup(); } catch { /* ignore */ }
+              setTimeout(() => onCreateFromKnown?.(s), 0);
+            };
+          }
         });
       });
 
@@ -163,7 +173,15 @@ export function MapView({ studies, onSelect, onCreateFromKnown }) {
         marker.bindPopup(popupHtml);
         marker.on('popupopen', (e) => {
           const btn = e.popup._contentNode.querySelector('.map-open-btn');
-          if (btn) btn.onclick = () => onSelect?.(s.id);
+          if (btn) {
+            btn.onclick = () => {
+              // Same defer pattern as the "Start Study" button — opening a
+              // study unmounts the Dashboard (and MapView), and Leaflet
+              // doesn't tolerate being torn down inside its own click handler.
+              try { marker.closePopup(); } catch { /* ignore */ }
+              setTimeout(() => onSelect?.(s.id), 0);
+            };
+          }
         });
         studyMarkers.push(marker);
       });

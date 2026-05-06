@@ -16,7 +16,12 @@ export default function App() {
   const fileRef = useRef(null);
   const active = studies.find(s => s.id === activeId) || null;
 
-  useEffect(() => saveDB(studies), [studies]);
+  // IMPORTANT: braces so setup returns undefined, not saveDB's boolean.
+  // Returning a non-function from a useEffect setup makes React try to call
+  // it as the cleanup on the next change → TypeError ("true is not a function")
+  // → caught by ErrorBoundary → "Something went wrong" blank screen on every
+  // study mutation (clear AI, AI Estimate, start-study-from-map, etc.).
+  useEffect(() => { saveDB(studies); }, [studies]);
 
   // Surface localStorage failures (quota exceeded, opaque origin, disabled
   // storage) so users know their work didn't persist.
