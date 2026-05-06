@@ -29,39 +29,125 @@ export const defBudget = () => ({
   oth: { depreciation: '', longRange: '', insurance: '', membership: '', purchasedWater: '', attorney: '', engineer: '', other: '' }
 });
 
-export function newStudy(name = '') {
-  const yr = String(new Date().getFullYear());
+const uuid = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const defaultForecast = () => ({
+  inflationRate: '3', revenueGrowth: '0', accountGrowth: '0',
+  beginFundBalance: '0', targetFundBalance: '5000',
+  debtService: ['', '', '', '', ''],
+  knownItems: [{ label: '', vals: ['', '', '', '', ''] }]
+});
+
+const defaultSystemInfo = (yr = String(new Date().getFullYear())) => ({
+  systemName: '', pwsId: '', county: '', studyYear: yr,
+  populationServed: '', sourceType: 'groundwater', systemType: 'community',
+  ownerContact: '', contactEmail: '', contactPhone: '',
+  address: '', latitude: null, longitude: null,
+  waterBodySource: '', // e.g. "Hugo Lake", "Antlers Aquifer"
+});
+
+const normalizeSide = (side = {}) => ({
+  customers: side.customers ?? '',
+  gallonsSold: side.gallonsSold ?? '',
+  minCharge: side.minCharge ?? '',
+  tiers: Array.isArray(side.tiers) && side.tiers.length > 0
+    ? side.tiers.map((t, i) => ({ gal: t?.gal ?? 1000 * (i + 1), rate: t?.rate ?? '' }))
+    : defaultTiers(),
+});
+
+const normalizeBudget = (budget = {}) => {
+  const base = defBudget();
+  return Object.fromEntries(
+    Object.entries(base).map(([section, fields]) => [
+      section,
+      { ...fields, ...(budget?.[section] && typeof budget[section] === 'object' ? budget[section] : {}) },
+    ]),
+  );
+};
+
+const normalizeForecast = (forecast = {}) => {
+  const base = defaultForecast();
+  const knownItems = Array.isArray(forecast?.knownItems) && forecast.knownItems.length > 0
+    ? forecast.knownItems.map(item => ({
+      label: item?.label ?? '',
+      vals: Array.from({ length: 5 }, (_, i) => item?.vals?.[i] ?? ''),
+    }))
+    : base.knownItems;
   return {
-    id: crypto.randomUUID(),
-    name: name || `Rate Study ${yr}`,
-    status: 'draft',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    systemInfo: {
-      systemName: '', pwsId: '', county: '', studyYear: yr,
-      populationServed: '', sourceType: 'groundwater', systemType: 'community',
-      ownerContact: '', contactEmail: '', contactPhone: '',
-      address: '', latitude: null, longitude: null,
-      waterBodySource: '', // e.g. "Hugo Lake", "Antlers Aquifer"
-    },
-    demographics: { medianMonthlyHHI: '', effectiveDate: '' },
-    classes: defaultClasses(),
-    curBudget: defBudget(),
-    propBudget: defBudget(),
-    forecast: {
-      inflationRate: '3', revenueGrowth: '0', accountGrowth: '0',
-      beginFundBalance: '0', targetFundBalance: '5000',
-      debtService: ['', '', '', '', ''],
-      knownItems: [{ label: '', vals: ['', '', '', '', ''] }]
-    },
-    scenarios: [],
-    aiAnalysis: { content: '', generatedAt: '' },
-    reportNotes: ''
+    ...base,
+    ...(forecast && typeof forecast === 'object' ? forecast : {}),
+    debtService: Array.from({ length: 5 }, (_, i) => forecast?.debtService?.[i] ?? ''),
+    knownItems,
+  };
+};
+
+const normalizeClasses = (classes) => {
+  const base = defaultClasses();
+  const incoming = Array.isArray(classes) ? classes : [];
+  const byId = new Map(incoming.filter(Boolean).map(c => [c.id, c]));
+  const merged = base.map(def => {
+    const c = byId.get(def.id) || {};
+    return {
+      ...def,
+      ...c,
+      id: c.id || def.id,
+      name: c.name ?? def.name,
+      enabled: Boolean(c.enabled ?? def.enabled),
+      cur: normalizeSide(c.cur || def.cur),
+      prop: normalizeSide(c.prop || def.prop),
+    };
+  });
+  for (const c of incoming) {
+    if (!c?.id || byId.has(c.id) && base.some(def => def.id === c.id)) continue;
+    merged.push({
+      ...mkClass(c.id, c.name || c.id, Boolean(c.enabled)),
+      ...c,
+      cur: normalizeSide(c.cur),
+      prop: normalizeSide(c.prop),
+    });
+  }
+  return merged;
+};
+
+export function normalizeStudy(study = {}) {
+  const yr = String(new Date().getFullYear());
+  const now = new Date().toISOString();
+  const safeStudy = study && typeof study === 'object' ? study : {};
+  return {
+    ...safeStudy,
+    id: safeStudy.id || uuid(),
+    name: safeStudy.name || `Rate Study ${yr}`,
+    status: safeStudy.status || 'draft',
+    createdAt: safeStudy.createdAt || now,
+    updatedAt: safeStudy.updatedAt || safeStudy.createdAt || now,
+    systemInfo: { ...defaultSystemInfo(yr), ...(safeStudy.systemInfo || {}) },
+    demographics: { medianMonthlyHHI: '', effectiveDate: '', ...(safeStudy.demographics || {}) },
+    classes: normalizeClasses(safeStudy.classes),
+    curBudget: normalizeBudget(safeStudy.curBudget),
+    propBudget: normalizeBudget(safeStudy.propBudget),
+    forecast: normalizeForecast(safeStudy.forecast),
+    scenarios: Array.isArray(safeStudy.scenarios) ? safeStudy.scenarios : [],
+    activeScenario: safeStudy.activeScenario || undefined,
+    aiAnalysis: { content: '', generatedAt: '', ...(safeStudy.aiAnalysis || {}) },
+    aiHistory: Array.isArray(safeStudy.aiHistory) ? safeStudy.aiHistory : [],
+    reportNotes: safeStudy.reportNotes || '',
   };
 }
 
+export function newStudy(name = '') {
+  return normalizeStudy({ name });
+}
+
 export const loadDB = () => {
-  try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(SK));
+    return Array.isArray(raw) ? raw.map(normalizeStudy) : [];
+  } catch {
+    return [];
+  }
 };
 
 // Save listeners — UI components subscribe to surface persistence failures

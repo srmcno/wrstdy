@@ -9,7 +9,8 @@
     "build": "vite build",
     "build:single": "VITE_SINGLEFILE=1 vite build --outDir dist-single",
     "preview": "vite preview",
-    "geocode-proxy": "node scripts/geocode-proxy.js"
+    "geocode-proxy": "node scripts/geocode-proxy.js",
+    "test": "node --test src/**/*.test.js"
   },
   "dependencies": {
     "chart.js": "^4.4.0",

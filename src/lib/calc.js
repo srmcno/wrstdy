@@ -1,9 +1,10 @@
 export const nv = (v) => parseFloat(v) || 0;
 
 // Bill using $/1000 gal tiers; each tier covers up to tier.gal cumulative gallons.
-export function calcBill(minCharge, tiers, gallons) {
+export function calcBill(minCharge, tiers = [], gallons) {
+  const safeTiers = Array.isArray(tiers) ? tiers : [];
   let bill = nv(minCharge), rem = nv(gallons), prev = 0;
-  for (const t of tiers) {
+  for (const t of safeTiers) {
     const top = nv(t.gal);
     const block = Math.min(rem, top - prev);
     if (block <= 0) break;
@@ -11,39 +12,40 @@ export function calcBill(minCharge, tiers, gallons) {
     rem -= block; prev = top;
     if (rem <= 0) break;
   }
-  if (rem > 0 && tiers.length > 0) {
-    bill += (rem / 1000) * nv(tiers[tiers.length - 1].rate);
+  if (rem > 0 && safeTiers.length > 0) {
+    bill += (rem / 1000) * nv(safeTiers[safeTiers.length - 1].rate);
   }
   return bill;
 }
 
 // Cumulative bill at each tier's configured gallon breakpoint.
-export function tierTopAmounts(minCharge, tiers) {
-  return tiers.map(t => calcBill(minCharge, tiers, nv(t.gal)));
+export function tierTopAmounts(minCharge, tiers = []) {
+  const safeTiers = Array.isArray(tiers) ? tiers : [];
+  return safeTiers.map(t => calcBill(minCharge, safeTiers, nv(t?.gal)));
 }
 
-export function classMonthlyIncome(cls, isProposed) {
-  const d = isProposed ? cls.prop : cls.cur;
+export function classMonthlyIncome(cls = {}, isProposed) {
+  const d = (isProposed ? cls.prop : cls.cur) || {};
   const cust = nv(d.customers);
   if (cust <= 0) return { monthly: 0, annual: 0, fixed: 0, volumetric: 0 };
   const totalGal = nv(d.gallonsSold) || 0;
   const avgGal = cust > 0 ? totalGal / cust : 0;
-  const bill = calcBill(d.minCharge, d.tiers, avgGal);
+  const bill = calcBill(d.minCharge, d.tiers || [], avgGal);
   const monthly = cust * bill;
   const fixed = cust * nv(d.minCharge);
   const volumetric = monthly - fixed;
   return { monthly, annual: monthly * 12, fixed, volumetric };
 }
 
-export function budgetTotal(b) {
-  const flat = (obj) => Object.values(obj).reduce((s, v) => s + nv(v), 0);
+export function budgetTotal(b = {}) {
+  const flat = (obj = {}) => Object.values(obj || {}).reduce((s, v) => s + nv(v), 0);
   const emp = flat(b.emp), ofc = flat(b.ofc), plt = flat(b.plt),
         dst = flat(b.dst), veh = flat(b.veh), loa = flat(b.loa), oth = flat(b.oth);
   return { emp, ofc, plt, dst, veh, loa, oth, total: emp + ofc + plt + dst + veh + loa + oth };
 }
 
-export function totalRevenue(classes, isProposed) {
-  return classes.filter(c => c.enabled).reduce((s, c) => {
+export function totalRevenue(classes = [], isProposed) {
+  return (Array.isArray(classes) ? classes : []).filter(c => c?.enabled).reduce((s, c) => {
     const d = classMonthlyIncome(c, isProposed);
     return {
       monthly: s.monthly + d.monthly,
@@ -54,20 +56,21 @@ export function totalRevenue(classes, isProposed) {
   }, { monthly: 0, annual: 0, fixed: 0, volumetric: 0 });
 }
 
-export function costPer1000(budget, classes, isProposed) {
+export function costPer1000(budget, classes = [], isProposed) {
   const exp = budgetTotal(budget).total;
-  const gal = classes.filter(c => c.enabled).reduce((s, c) => {
-    const d = isProposed ? c.prop : c.cur;
+  const gal = (Array.isArray(classes) ? classes : []).filter(c => c?.enabled).reduce((s, c) => {
+    const d = (isProposed ? c.prop : c.cur) || {};
     return s + nv(d.gallonsSold);
   }, 0);
   return gal > 0 ? (exp / (gal / 1000)) : 0;
 }
 
-export function cost5000(classes, isProposed) {
-  const res = classes.find(c => c.id === 'res') || classes.find(c => c.enabled);
+export function cost5000(classes = [], isProposed) {
+  const safeClasses = Array.isArray(classes) ? classes : [];
+  const res = safeClasses.find(c => c?.id === 'res') || safeClasses.find(c => c?.enabled);
   if (!res) return 0;
-  const d = isProposed ? res.prop : res.cur;
-  return calcBill(d.minCharge, d.tiers, 5000);
+  const d = (isProposed ? res.prop : res.cur) || {};
+  return calcBill(d.minCharge, d.tiers || [], 5000);
 }
 
 export function affordabilityIndex(classes, isProposed, mhi) {
@@ -81,13 +84,14 @@ export function operatingRatio(rev, expTotal) {
 }
 
 export function debtToIncome(budget, rev) {
-  const debt = nv(budget.loa.newLoan) + nv(budget.loa.owrb) + nv(budget.loa.bank) + nv(budget.loa.other);
+  const loa = budget?.loa || {};
+  const debt = nv(loa.newLoan) + nv(loa.owrb) + nv(loa.bank) + nv(loa.other);
   return rev > 0 ? debt / rev : 0;
 }
 
 export function baseCoverage(classes, isProposed, expTotal) {
-  const fixed = classes.filter(c => c.enabled).reduce((s, c) => {
-    const d = isProposed ? c.prop : c.cur;
+  const fixed = (Array.isArray(classes) ? classes : []).filter(c => c?.enabled).reduce((s, c) => {
+    const d = (isProposed ? c.prop : c.cur) || {};
     return s + nv(d.customers) * nv(d.minCharge);
   }, 0);
   return expTotal > 0 ? fixed / expTotal : 0;
@@ -122,10 +126,10 @@ export function calc5Yr(classes, curBudget, propBudget, forecast = {}) {
   return { yrs, ...rows };
 }
 
-export function calcHML(cls, isProposed, mhi) {
+export function calcHML(cls = {}, isProposed, mhi) {
   if (!mhi) return null;
-  const d = isProposed ? cls.prop : cls.cur;
-  const vol5000 = calcBill(0, d.tiers, 5000); // bill with $0 base
+  const d = (isProposed ? cls.prop : cls.cur) || {};
+  const vol5000 = calcBill(0, d.tiers || [], 5000); // bill with $0 base
   const m = nv(mhi);
   return {
     low: Math.max(0, m * 0.015 - vol5000),
