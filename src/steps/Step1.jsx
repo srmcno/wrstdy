@@ -4,6 +4,16 @@ import { F, $I } from '../components/atoms.jsx';
 import { geocode } from '../lib/geocode.js';
 import { ask, hasApiKey } from '../lib/ai.js';
 
+function StatusMsg({ msg }) {
+  if (!msg) return null;
+  const ok = msg.startsWith('✓');
+  return (
+    <div className={'al ' + (ok ? 'al-ok' : 'al-e')} style={{ marginTop: 10, fontSize: 12 }}>
+      {msg}
+    </div>
+  );
+}
+
 export function Step1({ study, onField }) {
   const si = study.systemInfo;
   const dm = study.demographics || {};
@@ -56,11 +66,11 @@ export function Step1({ study, onField }) {
       if (!addr) throw new Error('Enter an address or system name first (e.g. "Antlers, OK" or the system name).');
       const r = await geocode(addr, { county: si.county });
       usiMany({ latitude: r.latitude, longitude: r.longitude });
-      if (mountedRef.current) setGeoMsg(`✓ Found: ${r.displayName.slice(0, 80)}`);
+      if (mountedRef.current) setGeoMsg(`✓ Coordinates found: ${r.displayName.slice(0, 80)}`);
     } catch (e) {
       const msg = e.message || String(e);
       const hint = /not found|no result/i.test(msg)
-        ? ' Try a more specific address like "City, County, OK" or just the system name.'
+        ? ' Try a more specific address like "City, County, OK".'
         : /network|fetch|429|rate/i.test(msg)
         ? ' Check your internet connection or wait a moment before retrying.'
         : '';
@@ -73,7 +83,7 @@ export function Step1({ study, onField }) {
   async function aiEstimate() {
     setAiMsg(''); setAiBusy(true);
     try {
-      const sysPrompt = `You are a research assistant helping the Choctaw Nation Office of Water Resource Management estimate baseline information for a public water system in southeastern Oklahoma. Given a system name and county, return a JSON object with your best-effort estimates. CLEARLY mark every estimated value as estimated. If you genuinely don't know, leave the field empty rather than guess.
+      const sysPrompt = `You are a research assistant helping the Choctaw Nation Office of Water Resource Management estimate baseline information for a public water system in southeastern Oklahoma. Given a system name and county, return a JSON object with your best-effort estimates. If you genuinely don't know, leave the field empty rather than guess.
 
 Return STRICT JSON only — no markdown, no commentary outside the JSON. Schema:
 {
@@ -94,23 +104,29 @@ State: Oklahoma`;
       if (!m) throw new Error('AI response was not JSON: ' + (text || '').slice(0, 200));
       const j = JSON.parse(m[0]);
       const siPatch = {};
-      if (j.pwsId && !si.pwsId) siPatch.pwsId = String(j.pwsId);
-      if (j.sourceType) siPatch.sourceType = String(j.sourceType);
-      if (j.systemType) siPatch.systemType = String(j.systemType);
-      if (j.populationServed && !si.populationServed) siPatch.populationServed = String(j.populationServed);
-      if (j.address && !si.address) siPatch.address = String(j.address);
-      if (j.waterBodySource && !si.waterBodySource) siPatch.waterBodySource = String(j.waterBodySource);
+      const filled = [];
+      if (j.pwsId && !si.pwsId) { siPatch.pwsId = String(j.pwsId); filled.push('PWS ID'); }
+      if (j.sourceType && !si.sourceType) { siPatch.sourceType = String(j.sourceType); filled.push('Source Type'); }
+      if (j.systemType && !si.systemType) { siPatch.systemType = String(j.systemType); filled.push('System Type'); }
+      if (j.populationServed && !si.populationServed) { siPatch.populationServed = String(j.populationServed); filled.push('Population'); }
+      if (j.address && !si.address) { siPatch.address = String(j.address); filled.push('Address'); }
+      if (j.waterBodySource && !si.waterBodySource) { siPatch.waterBodySource = String(j.waterBodySource); filled.push('Water Source'); }
       // Combine systemInfo + demographics into a SINGLE patch so App's setStudies
       // commits both fields in one render. Two sequential onField calls across
-      // an `await` boundary in React 18 don't auto-batch reliably and can
-      // cascade re-renders that race with this function's trailing state writes.
+      // an `await` boundary in React 18 don't auto-batch reliably.
       const patch = { systemInfo: { ...si, ...siPatch } };
       if (j.monthlyMHI && !dm.medianMonthlyHHI) {
         patch.demographics = { ...dm, medianMonthlyHHI: String(j.monthlyMHI) };
+        filled.push('Monthly HHI');
       }
-      onField(patch);
+      // Skip the update entirely when nothing changed — avoids a needless
+      // re-render and localStorage write from a new-but-identical object ref.
+      if (filled.length > 0) onField(patch);
       if (mountedRef.current) {
-        setAiMsg(`✓ Filled blank fields with AI estimates. ${j.notes || ''} Verify before publishing.`);
+        const msg = filled.length > 0
+          ? `✓ Estimated ${filled.length} field(s): ${filled.join(', ')}. ${j.notes || ''} Verify before publishing.`
+          : `✓ All fields already populated — nothing new to estimate. ${j.notes || ''}`;
+        setAiMsg(msg);
       }
     } catch (e) {
       console.error('AI estimate failed', e);
@@ -227,8 +243,13 @@ State: Oklahoma`;
           </F>
           <div /><div />
         </div>
-        {geoMsg && <div style={{ fontSize: 11, color: geoMsg.startsWith('✓') ? 'var(--lime-dim)' : 'var(--red)', marginTop: 8 }}>{geoMsg}</div>}
-        {aiMsg && <div style={{ fontSize: 11, color: aiMsg.startsWith('✓') ? 'var(--lime-dim)' : 'var(--red)', marginTop: 8 }}>{aiMsg}</div>}
+        {!hasApiKey() && (
+          <div className="al al-i" style={{ marginTop: 10, fontSize: 12 }}>
+            <strong>AI Estimate is disabled.</strong> Add an Anthropic API key in <em>Step 7 → Settings</em> to enable auto-fill of blank fields.
+          </div>
+        )}
+        <StatusMsg msg={geoMsg} />
+        <StatusMsg msg={aiMsg} />
       </div>
       <div className="card">
         <div className="sh">Demographics & MHI</div>
