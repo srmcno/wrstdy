@@ -39,16 +39,18 @@ export function Workspace({ study, onUpdate, onDelete }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   // field('foo', v) sets a single key.
   // field({ a, b }) patches multiple keys atomically — required when one
-  // handler needs to set two fields back-to-back, since `study` is a closed-
-  // over snapshot and a second call would otherwise drop the first update.
+  // handler needs to set two fields back-to-back.
+  // Uses the (id, patch) form of onUpdate so the merge happens against the
+  // LATEST study in App state, not the closure-captured snapshot. This makes
+  // long-running async writes (e.g. AI replies in Step 7) safe to land even
+  // after the user has navigated away and edited other steps in the meantime.
   const field = (kOrPatch, v) => {
     const patch = typeof kOrPatch === 'string' ? { [kOrPatch]: v } : kOrPatch;
-    onUpdate({
-      ...study,
+    const fullPatch = {
       ...patch,
-      updatedAt: new Date().toISOString(),
       status: patch.status ?? (study.status === 'draft' && step > 0 ? 'in-progress' : study.status),
-    });
+    };
+    onUpdate(study.id, fullPatch);
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

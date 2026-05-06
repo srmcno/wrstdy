@@ -208,7 +208,7 @@ Propose new rates for this class only.`;
             onClick={suggestRates}
             disabled={aiBusy || !hasApiKey()}
             aria-label="Use AI to suggest a tier rate structure for the selected customer class"
-            title={hasApiKey() ? `Use AI to suggest a tier structure for ${sel?.name || 'this class'}` : 'Add an Anthropic API key in Step 7 → Settings to enable'}
+            title={hasApiKey() ? `Use AI to suggest a tier structure for ${sel?.name || 'this class'}` : 'Add an API key in Step 7 → Settings to enable'}
           >
             {aiBusy
               ? <><span className="spin" /> Thinking…</>
