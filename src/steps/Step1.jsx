@@ -105,12 +105,12 @@ State: Oklahoma`;
       const j = JSON.parse(m[0]);
       const siPatch = {};
       const filled = [];
-      if (j.pwsId && !si.pwsId)               { siPatch.pwsId = String(j.pwsId);                       filled.push('PWS ID'); }
-      if (j.sourceType && !si.sourceType)      { siPatch.sourceType = String(j.sourceType);              filled.push('Source Type'); }
-      if (j.systemType && !si.systemType)      { siPatch.systemType = String(j.systemType);              filled.push('System Type'); }
+      if (j.pwsId && !si.pwsId) { siPatch.pwsId = String(j.pwsId); filled.push('PWS ID'); }
+      if (j.sourceType && !si.sourceType) { siPatch.sourceType = String(j.sourceType); filled.push('Source Type'); }
+      if (j.systemType && !si.systemType) { siPatch.systemType = String(j.systemType); filled.push('System Type'); }
       if (j.populationServed && !si.populationServed) { siPatch.populationServed = String(j.populationServed); filled.push('Population'); }
-      if (j.address && !si.address)            { siPatch.address = String(j.address);                    filled.push('Address'); }
-      if (j.waterBodySource && !si.waterBodySource)   { siPatch.waterBodySource = String(j.waterBodySource); filled.push('Water Source'); }
+      if (j.address && !si.address) { siPatch.address = String(j.address); filled.push('Address'); }
+      if (j.waterBodySource && !si.waterBodySource) { siPatch.waterBodySource = String(j.waterBodySource); filled.push('Water Source'); }
       // Combine systemInfo + demographics into a SINGLE patch so App's setStudies
       // commits both fields in one render. Two sequential onField calls across
       // an `await` boundary in React 18 don't auto-batch reliably.
@@ -119,7 +119,9 @@ State: Oklahoma`;
         patch.demographics = { ...dm, medianMonthlyHHI: String(j.monthlyMHI) };
         filled.push('Monthly HHI');
       }
-      onField(patch);
+      // Skip the update entirely when nothing changed — avoids a needless
+      // re-render and localStorage write from a new-but-identical object ref.
+      if (filled.length > 0) onField(patch);
       if (mountedRef.current) {
         const msg = filled.length > 0
           ? `✓ Estimated ${filled.length} field(s): ${filled.join(', ')}. ${j.notes || ''} Verify before publishing.`
