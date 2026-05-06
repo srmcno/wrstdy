@@ -16,7 +16,11 @@ export default function App() {
   const fileRef = useRef(null);
   const active = studies.find(s => s.id === activeId) || null;
 
-  useEffect(() => saveDB(studies), [studies]);
+  // Curly braces matter: the arrow must return undefined, not saveDB's
+  // boolean. React treats any non-undefined return as the effect's cleanup
+  // and tries to call it on the next run — `true()` throws and surfaces as
+  // an ErrorBoundary on every state change.
+  useEffect(() => { saveDB(studies); }, [studies]);
 
   // Surface localStorage failures (quota exceeded, opaque origin, disabled
   // storage) so users know their work didn't persist.
