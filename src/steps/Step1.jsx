@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { COUNTIES } from '../lib/constants.js';
 import { F, $I } from '../components/atoms.jsx';
 import { geocode } from '../lib/geocode.js';
@@ -15,8 +15,28 @@ export function Step1({ study, onField }) {
   const [geoMsg, setGeoMsg] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState('');
+  const geocodeTimerRef = useRef(null);
+  const nextGeocodeAtRef = useRef(0);
+
+  useEffect(() => () => {
+    if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+  }, []);
+
+  function scheduleGeocode() {
+    if (geoBusy) return;
+    if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+    setGeoMsg('Waiting briefly before geocoding to avoid rapid repeat requests…');
+    geocodeTimerRef.current = setTimeout(doGeocode, 300);
+  }
 
   async function doGeocode() {
+    const now = Date.now();
+    if (now < nextGeocodeAtRef.current) {
+      const waitSeconds = Math.ceil((nextGeocodeAtRef.current - now) / 1000);
+      setGeoMsg(`Please wait ${waitSeconds}s before geocoding again.`);
+      return;
+    }
+    nextGeocodeAtRef.current = now + 1100;
     setGeoMsg(''); setGeoBusy(true);
     try {
       const addr = si.address || si.systemName;
@@ -137,7 +157,7 @@ State: Oklahoma`;
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 9, borderBottom: '1px solid var(--border)', marginBottom: 13 }}>
           <div className="sh" style={{ paddingBottom: 0, borderBottom: 'none', marginBottom: 0 }}>Location & Source</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn b-out btn-sm" onClick={doGeocode} disabled={geoBusy} title="Look up coordinates from the address (uses OpenStreetMap)">
+            <button className="btn b-out btn-sm" onClick={scheduleGeocode} disabled={geoBusy} title="Look up coordinates from the address (uses OpenStreetMap)">
               {geoBusy ? '📍 Geocoding…' : '📍 Geocode'}
             </button>
             <button

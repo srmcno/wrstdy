@@ -68,6 +68,36 @@ visible in workflow logs, and isn't readable from forked-PR runs.
 You can also trigger a build manually from the **Actions** tab via
 **Run workflow**.
 
+
+## Geocoding
+
+Step 1 can look up latitude/longitude from the address or system name using
+OpenStreetMap Nominatim. The default browser-only build calls Nominatim directly
+and cannot set a custom `User-Agent` header because browsers block that header.
+Treat direct browser geocoding as best-effort, low-volume convenience behavior for
+internal use; the app also throttles geocoding calls to about one request per
+second and debounces the Geocode button to avoid accidental repeat requests.
+
+For production deployments where geocoding reliability matters, run the included
+server-side proxy so requests can include a compliant `User-Agent` with contact
+information:
+
+```bash
+GEOCODE_CONTACT=water@example.org npm run geocode-proxy
+```
+
+Then build or run the Vite app with the proxy endpoint configured:
+
+```bash
+VITE_GEOCODE_ENDPOINT=/api/geocode npm run build
+```
+
+If the proxy is hosted on a different origin during development, use its full
+URL instead, for example `VITE_GEOCODE_ENDPOINT=http://localhost:8787/api/geocode`.
+The proxy exposes `/healthz`, forwards `/api/geocode` to Nominatim, and applies a
+one-request-per-second server-side throttle. Set `GEOCODE_CORS_ORIGIN` if you need
+to restrict browser origins.
+
 ## AI Analysis
 
 Step 7 calls the Anthropic API directly from the browser using the
