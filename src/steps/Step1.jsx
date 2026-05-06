@@ -104,14 +104,18 @@ State: Oklahoma`;
       // commits both fields in one render. Two sequential onField calls across
       // an `await` boundary in React 18 don't auto-batch reliably and can
       // cascade re-renders that race with this function's trailing state writes.
-      const dmPatch = j.monthlyMHI && !dm.medianMonthlyHHI
-        ? { ...dm, medianMonthlyHHI: String(j.monthlyMHI) }
-        : dm;
-      const patch = {
-        systemInfo: { ...si, ...siPatch },
-        demographics: dmPatch
-      };
-      onField(patch);
+      // Only include fields that actually changed to avoid overwriting user edits
+      // made while the AI request was in flight.
+      const patch = {};
+      if (Object.keys(siPatch).length > 0) {
+        patch.systemInfo = { ...si, ...siPatch };
+      }
+      if (j.monthlyMHI && !dm.medianMonthlyHHI) {
+        patch.demographics = { ...dm, medianMonthlyHHI: String(j.monthlyMHI) };
+      }
+      if (Object.keys(patch).length > 0) {
+        onField(patch);
+      }
       if (mountedRef.current) {
         setAiMsg(`✓ Filled blank fields with AI estimates. ${j.notes || ''} Verify before publishing.`);
       }
