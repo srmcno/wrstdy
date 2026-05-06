@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { STEPS } from '../lib/constants.js';
 import { fmt } from '../lib/calc.js';
+import { statusMeta } from '../lib/status.js';
 
 // Compact "saved 3s ago" / "saved just now" indicator that re-renders every 10s.
 function SavedAgo({ iso }) {
@@ -44,7 +45,7 @@ export function Workspace({ study, onUpdate, onDelete }) {
       ...study,
       ...patch,
       updatedAt: new Date().toISOString(),
-      status: study.status === 'draft' && step > 0 ? 'in-progress' : study.status,
+      status: patch.status ?? (study.status === 'draft' && step > 0 ? 'in-progress' : study.status),
     });
   };
   return (
@@ -60,8 +61,8 @@ export function Workspace({ study, onUpdate, onDelete }) {
             <SavedAgo iso={study.updatedAt} />
           </div>
         </div>
-        <span className={'bs ' + (study.status === 'complete' ? 'bsc' : study.status === 'in-progress' ? 'bsp' : 'bsd')}>
-          {study.status}
+        <span className={'bs ' + statusMeta(study.status).badgeClass}>
+          {statusMeta(study.status).label}
         </span>
         <button
           className="btn b-del btn-sm"

@@ -9,8 +9,8 @@ metrics, 5-year projections, scenario modeling, and board-ready reporting.
 - **Vite** — build/dev tooling
 - **React 18** — UI
 - **Chart.js 4** — projection charts
-- **localStorage** — persistence (no backend required)
-- **Anthropic API** (optional) — AI analysis section. Requires user-provided API key.
+- **localStorage** — persistence (no backend required for study data)
+- **Anthropic API** (optional) — AI analysis section. Hosted deployments should use a server-side proxy.
 
 ## Develop
 
@@ -57,41 +57,119 @@ which produces two downloadable artifacts on the run's summary page:
 - `water-rate-study-tool-single-file` — the standalone `index.html`
 - `water-rate-study-tool-dist` — the chunked `dist/` for normal hosting
 
-To bake an Anthropic API key into the artifacts, add it as a repo secret:
-
-> **Settings → Secrets and variables → Actions → New repository secret**
-> Name: `VITE_ANTHROPIC_KEY`  Value: `sk-ant-...`
-
-The workflow injects it at build time. The key is encrypted at rest, isn't
-visible in workflow logs, and isn't readable from forked-PR runs.
+The workflow does **not** inject `VITE_ANTHROPIC_KEY` into artifacts. If AI should
+be enabled in hosted artifacts, add a repository/environment variable named
+`VITE_AI_PROXY_URL` that points at the deployed proxy endpoint. Keep the Anthropic
+API key only in the proxy's server-side secret store.
 
 You can also trigger a build manually from the **Actions** tab via
 **Run workflow**.
 
+
+## Geocoding
+
+Step 1 can look up latitude/longitude from the address or system name using
+OpenStreetMap Nominatim. The default browser-only build calls Nominatim directly
+and cannot set a custom `User-Agent` header because browsers block that header.
+Treat direct browser geocoding as best-effort, low-volume convenience behavior for
+internal use; the app also throttles geocoding calls to about one request per
+second and debounces the Geocode button to avoid accidental repeat requests.
+
+For production deployments where geocoding reliability matters, run the included
+server-side proxy so requests can include a compliant `User-Agent` with contact
+information:
+
+```bash
+GEOCODE_CONTACT=water@example.org npm run geocode-proxy
+```
+
+Then build or run the Vite app with the proxy endpoint configured:
+
+```bash
+VITE_GEOCODE_ENDPOINT=/api/geocode npm run build
+```
+
+If the proxy is hosted on a different origin during development, use its full
+URL instead, for example `VITE_GEOCODE_ENDPOINT=http://localhost:8787/api/geocode`.
+The proxy exposes `/healthz`, forwards `/api/geocode` to Nominatim, and applies a
+one-request-per-second server-side throttle. Set `GEOCODE_CORS_ORIGIN` if you need
+to restrict browser origins.
+
 ## AI Analysis
 
-Step 7 calls the Anthropic API directly from the browser using the
-`anthropic-dangerous-direct-browser-access` header.
+Step 7 can call Anthropic in two modes:
 
-The key can come from two places (in priority order):
+1. **Server-side proxy mode (recommended for hosted or externally distributed builds).**
+   Set `VITE_AI_PROXY_URL` at build time. The browser sends `ask` and `chat`
+   payloads to that URL instead of calling `https://api.anthropic.com/v1/messages`
+   directly, and no browser-visible Anthropic key is required.
+2. **Direct-browser mode (local/internal only).** If `VITE_AI_PROXY_URL` is not
+   set, the app calls Anthropic directly from the browser using the
+   `anthropic-dangerous-direct-browser-access` header. This mode requires either
+   a per-device key entered in Step 7 → Settings or a build-time
+   `VITE_ANTHROPIC_KEY`.
 
-1. **A per-device key** entered via the Step 7 ⚙ Settings panel — saved to
-   `localStorage` only on that browser.
-2. **A build-time key** in a `VITE_ANTHROPIC_KEY` env var — baked into the
-   bundle so staff don't have to enter anything.
+### Configure proxy mode
 
-To bake in a key:
+Set the proxy URL before building:
+
+```bash
+echo 'VITE_AI_PROXY_URL=https://your-internal-host.example.com/api/ai/messages' > .env.local
+npm run build           # or npm run build:single
+```
+
+The proxy should accept a `POST` with an Anthropic Messages API-compatible JSON
+body:
+
+```json
+{
+  "model": "claude-haiku-4-5-20251001",
+  "max_tokens": 1200,
+  "system": "...",
+  "messages": [{ "role": "user", "content": "..." }]
+}
+```
+
+The proxy can return Anthropic's normal response (`content: [{ text: "..." }]`) or
+a simplified response such as `{ "text": "..." }`.
+
+Proxy deployment recommendations:
+
+- **Key storage:** store `ANTHROPIC_API_KEY` only as a server-side secret
+  (platform secret manager, encrypted environment variable, or equivalent). Do
+  not echo it in responses, logs, client-rendered HTML, or source maps.
+- **Authentication and authorization:** restrict the proxy to approved staff,
+  internal networks, SSO, or another access-control layer. Do not leave an
+  unauthenticated public endpoint that can spend your Anthropic credits.
+- **Rate limiting:** enforce per-user/per-IP quotas and request-size limits.
+  Return `429` when callers exceed expected usage, and cap `max_tokens` to a
+  safe value server-side rather than trusting the browser payload.
+- **Request validation:** allow only expected models and fields, and normalize
+  or reject unsupported payloads before forwarding to Anthropic.
+- **Logging:** log timestamp, authenticated user or client identifier, status,
+  latency, model, token counts, and request IDs for operations and cost review.
+  Avoid logging full prompts/responses unless you have explicit approval because
+  rate studies may include sensitive system finances and customer data.
+- **Error handling:** map Anthropic errors to concise client errors and avoid
+  leaking server stack traces or secrets.
+- **CORS:** allow the Water Rate Study Tool origin(s) only.
+
+### Direct-browser mode for local/internal use
+
+A per-device key can be entered via the Step 7 ⚙ Settings panel and is saved to
+that browser's `localStorage` only.
+
+For trusted local/internal builds only, you may also set a build-time key:
 
 ```bash
 echo 'VITE_ANTHROPIC_KEY=sk-ant-...' > .env.local
 npm run build           # or npm run build:single
 ```
 
-⚠️ **Anyone with access to the built `dist/` (or `dist-single/index.html`)
-can extract that key.** Only do this for builds distributed to trusted OWRM
-staff on internal infrastructure. For external/public deployment, leave the
-env var unset and put a server-side proxy in front of the Anthropic API
-instead.
+⚠️ **Anyone with access to the built `dist/` (or `dist-single/index.html`) can
+extract `VITE_ANTHROPIC_KEY`.** Do not use this for externally distributed or
+public artifacts. Prefer `VITE_AI_PROXY_URL` so the Anthropic key remains on the
+server.
 
 ## Data
 

@@ -6,38 +6,32 @@ export function Step6({ study, onField }) {
   const classes = study.classes || [];
   const mhi = study.demographics?.medianMonthlyHHI;
   const propBT = budgetTotal(study.propBudget || defBudget());
-  const activeScenario = study.activeScenario || {};
-  const scenario = scenarioForClasses(classes, activeScenario);
-  const adjustments = scenario.adjustments;
-  const rateBasis = scenario.rateBasis;
-  const useProposedRates = (id) => rateBasis[id] !== 'current';
+  const defaultAdjustments = { res: 1, pas: 1, com: 1, who: 1, c5: 1, c6: 1, c7: 1 };
+  const [scenario, setScenario] = useState({
+    rateBasis: {},
+    adjustments: defaultAdjustments
+  });
+  const useProposedRates = (id) => (scenario.rateBasis[id] || 'proposed') === 'proposed';
   const rateBasisLabel = (id) => useProposedRates(id) ? 'Proposed rates' : 'Current rates';
-  const multiplier = (id) => adjustments[id] ?? 1;
-  const saveScenario = (next, label = activeScenario.label || 'Custom') => {
-    const normalized = scenarioForClasses(classes, { ...activeScenario, ...next });
-    onField('activeScenario', {
-      ...activeScenario,
-      ...normalized,
-      label,
-    });
-  };
-  const applyScenario = (nextAdjustments, basis = 'proposed', label = 'Custom') => saveScenario({
-    adjustments: nextAdjustments,
+  const multiplier = (id) => scenario.adjustments[id] || 1;
+  const applyScenario = (adjustments, basis = 'proposed') => setScenario({
     rateBasis: classes.reduce((acc, c) => ({ ...acc, [c.id]: basis }), {}),
-  }, label);
-  const adjust = (id, val) => saveScenario({
-    adjustments: { ...adjustments, [id]: nv(val) },
-  }, 'Custom');
+    adjustments
+  });
+  const adjust = (id, val) => setScenario(s => ({
+    ...s,
+    adjustments: { ...s.adjustments, [id]: nv(val) }
+  }));
   const scenarioIncome = (c) => classMonthlyIncome(c, useProposedRates(c.id)).monthly * multiplier(c.id);
   const baseMonthly = totalRevenue(classes, true).monthly;
   const propRevAdj = classes.filter(c => c.enabled).reduce((s, c) => s + scenarioIncome(c), 0);
   const net = propRevAdj - propBT.total;
   const presets = [
-    { label: 'Shift to Residential', adjustments: { res: 1.15, pas: 1, com: 0.95, who: 0.95, c5: 1, c6: 1, c7: 1 }, basis: 'proposed', hint: '+15% res, -5% com/who' },
-    { label: 'Shift to Commercial', adjustments: { res: 0.95, pas: 1, com: 1.20, who: 1.10, c5: 1, c6: 1, c7: 1 }, basis: 'proposed', hint: '-5% res, +20% com' },
-    { label: 'Rate Freeze (Current)', adjustments: DEFAULT_SCENARIO_ADJUSTMENTS, basis: 'current', hint: 'Use current rates' },
-    { label: 'High Burden', adjustments: { res: 1.25, pas: 1.10, com: 1.15, who: 1.10, c5: 1, c6: 1, c7: 1 }, basis: 'proposed', hint: '+25% res, +15% com' },
-    { label: 'Reset', adjustments: DEFAULT_SCENARIO_ADJUSTMENTS, basis: 'proposed', hint: 'Back to proposed' }
+    { label: 'Shift to Residential', action: () => applyScenario({ res: 1.15, pas: 1, com: 0.95, who: 0.95, c5: 1, c6: 1, c7: 1 }), hint: '+15% res, -5% com/who' },
+    { label: 'Shift to Commercial', action: () => applyScenario({ res: 0.95, pas: 1, com: 1.20, who: 1.10, c5: 1, c6: 1, c7: 1 }), hint: '-5% res, +20% com' },
+    { label: 'Rate Freeze (Current)', action: () => applyScenario(defaultAdjustments, 'current'), hint: 'Use current rates' },
+    { label: 'High Burden', action: () => applyScenario({ res: 1.25, pas: 1.10, com: 1.15, who: 1.10, c5: 1, c6: 1, c7: 1 }), hint: '+25% res, +15% com' },
+    { label: 'Reset', action: () => applyScenario(defaultAdjustments), hint: 'Back to proposed' }
   ];
   return (
     <div className="stack">
@@ -119,7 +113,8 @@ export function Step6({ study, onField }) {
           <tbody>
             {classes.filter(c => c.enabled).map(c => {
               const base = classMonthlyIncome(c, true).monthly;
-              const adj = scenarioIncome(c);
+              const scenarioBase = classMonthlyIncome(c, useProposedRates(c.id)).monthly;
+              const adj = scenarioBase * multiplier(c.id);
               const chg = adj - base;
               return (
                 <tr key={c.id}>
