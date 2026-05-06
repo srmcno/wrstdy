@@ -15,12 +15,23 @@ export function Step1({ study, onField }) {
   const [geoMsg, setGeoMsg] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState('');
+  const [geoCooldown, setGeoCooldown] = useState(0);
   const geocodeTimerRef = useRef(null);
   const nextGeocodeAtRef = useRef(0);
 
   useEffect(() => () => {
     if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
   }, []);
+
+  // Tick the cooldown countdown so the disabled button label shows seconds left.
+  useEffect(() => {
+    if (geoCooldown <= 0) return;
+    const t = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((nextGeocodeAtRef.current - Date.now()) / 1000));
+      setGeoCooldown(remaining);
+    }, 250);
+    return () => clearInterval(t);
+  }, [geoCooldown]);
 
   function scheduleGeocode() {
     if (geoBusy) return;
@@ -32,20 +43,26 @@ export function Step1({ study, onField }) {
   async function doGeocode() {
     const now = Date.now();
     if (now < nextGeocodeAtRef.current) {
-      const waitSeconds = Math.ceil((nextGeocodeAtRef.current - now) / 1000);
-      setGeoMsg(`Please wait ${waitSeconds}s before geocoding again.`);
+      // The button is already disabled while in cooldown — this is the safety net.
       return;
     }
     nextGeocodeAtRef.current = now + 1100;
+    setGeoCooldown(2);
     setGeoMsg(''); setGeoBusy(true);
     try {
       const addr = si.address || si.systemName;
-      if (!addr) throw new Error('Enter an address or system name first.');
+      if (!addr) throw new Error('Enter an address or system name first (e.g. "Antlers, OK" or the system name).');
       const r = await geocode(addr, { county: si.county });
       usiMany({ latitude: r.latitude, longitude: r.longitude });
       setGeoMsg(`✓ Found: ${r.displayName.slice(0, 80)}`);
     } catch (e) {
-      setGeoMsg('✗ ' + (e.message || String(e)));
+      const msg = e.message || String(e);
+      const hint = /not found|no result/i.test(msg)
+        ? ' Try a more specific address like "City, County, OK" or just the system name.'
+        : /network|fetch|429|rate/i.test(msg)
+        ? ' Check your internet connection or wait a moment before retrying.'
+        : '';
+      setGeoMsg('✗ ' + msg + hint);
     } finally {
       setGeoBusy(false);
     }
@@ -157,16 +174,29 @@ State: Oklahoma`;
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 9, borderBottom: '1px solid var(--border)', marginBottom: 13 }}>
           <div className="sh" style={{ paddingBottom: 0, borderBottom: 'none', marginBottom: 0 }}>Location & Source</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn b-out btn-sm" onClick={scheduleGeocode} disabled={geoBusy} title="Look up coordinates from the address (uses OpenStreetMap)">
-              {geoBusy ? '📍 Geocoding…' : '📍 Geocode'}
+            <button
+              className="btn b-out btn-sm"
+              onClick={scheduleGeocode}
+              disabled={geoBusy || geoCooldown > 0}
+              aria-label="Geocode address from system name and address"
+              title={geoCooldown > 0 ? `Wait ${geoCooldown}s before retrying` : 'Look up coordinates from the address (uses OpenStreetMap)'}
+            >
+              {geoBusy
+                ? <><span className="spin" /> Geocoding…</>
+                : geoCooldown > 0
+                ? `📍 Geocode (${geoCooldown}s)`
+                : '📍 Geocode'}
             </button>
             <button
               className="btn b-lime btn-sm"
               onClick={aiEstimate}
               disabled={aiBusy || !hasApiKey()}
+              aria-label="Estimate system info using AI"
               title={hasApiKey() ? 'Use AI to estimate blank fields from the system name + county' : 'Add an Anthropic API key in Step 7 → Settings to enable'}
             >
-              {aiBusy ? '✨ Estimating…' : '✨ AI Estimate'}
+              {aiBusy
+                ? <><span className="spin" /> Estimating…</>
+                : '✨ AI Estimate'}
             </button>
           </div>
         </div>

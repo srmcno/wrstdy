@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { STEPS } from '../lib/constants.js';
 import { fmt } from '../lib/calc.js';
 import { statusMeta } from '../lib/status.js';
+import { ConfirmModal } from './ConfirmModal.jsx';
 
 // Compact "saved 3s ago" / "saved just now" indicator that re-renders every 10s.
 function SavedAgo({ iso }) {
@@ -35,6 +36,7 @@ import { Step8 } from '../steps/Step8.jsx';
 
 export function Workspace({ study, onUpdate, onDelete }) {
   const [step, setStep] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // field('foo', v) sets a single key.
   // field({ a, b }) patches multiple keys atomically — required when one
   // handler needs to set two fields back-to-back, since `study` is a closed-
@@ -66,11 +68,29 @@ export function Workspace({ study, onUpdate, onDelete }) {
         </span>
         <button
           className="btn b-del btn-sm"
-          onClick={() => { if (window.confirm('Delete this study?')) onDelete(study.id); }}
+          onClick={() => setConfirmDelete(true)}
         >
           Delete
         </button>
       </div>
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete this study?"
+          message={
+            <>
+              <strong>{study.name}</strong>
+              {study.systemInfo?.systemName ? <> — {study.systemInfo.systemName}</> : null}
+              {study.systemInfo?.studyYear ? <> ({study.systemInfo.studyYear})</> : null}
+              <br /><br />
+              This permanently removes the study and all its rate, budget, and projection
+              data from your browser. Export it first if you need a backup.
+            </>
+          }
+          confirmLabel="Delete study"
+          onConfirm={() => { setConfirmDelete(false); onDelete(study.id); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
       <div className="tabs no-print">
         {STEPS.map(s => (
           <button key={s.id} className={'tab' + (step === s.id ? ' on' : '')} onClick={() => setStep(s.id)}>

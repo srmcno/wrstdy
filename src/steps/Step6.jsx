@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { defBudget } from '../lib/state.js';
 import { DEFAULT_SCENARIO_ADJUSTMENTS, scenarioForClasses } from '../lib/scenarios.js';
 import { budgetTotal, totalRevenue, classMonthlyIncome, affordabilityIndex, nv, fmt } from '../lib/calc.js';

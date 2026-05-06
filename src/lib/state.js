@@ -63,6 +63,21 @@ export function newStudy(name = '') {
 export const loadDB = () => {
   try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; }
 };
+
+// Save listeners — UI components subscribe to surface persistence failures
+// (quota exceeded, opaque origin, disabled storage) instead of silently
+// dropping data.
+const saveListeners = new Set();
+export function onSaveStatus(fn) { saveListeners.add(fn); return () => saveListeners.delete(fn); }
+function notify(status, err) { saveListeners.forEach(fn => { try { fn(status, err); } catch { /* ignore */ } }); }
+
 export const saveDB = (s) => {
-  try { localStorage.setItem(SK, JSON.stringify(s)); } catch { /* opaque origin / quota / disabled */ }
+  try {
+    localStorage.setItem(SK, JSON.stringify(s));
+    notify('ok', null);
+    return true;
+  } catch (err) {
+    notify('error', err);
+    return false;
+  }
 };

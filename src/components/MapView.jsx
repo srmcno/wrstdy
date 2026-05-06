@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { CHOCTAW_BOUNDARY, CHOCTAW_CENTER, CHOCTAW_ZOOM, KNOWN_SYSTEMS } from '../lib/choctaw-boundary.js';
+import { useEffect, useRef, useState } from 'react';
+import { CHOCTAW_CENTER, CHOCTAW_ZOOM, KNOWN_SYSTEMS } from '../lib/choctaw-boundary.js';
 import { statusMeta } from '../lib/status.js';
 
 // Lazy-loads Leaflet so it doesn't bloat the initial bundle.
@@ -9,19 +9,26 @@ async function loadLeaflet() {
   return L.default || L;
 }
 
+// Lazy-loads the CNO Council Districts geojson.
+async function loadDistricts() {
+  const mod = await import('../assets/cno-districts.json');
+  return mod.default || mod;
+}
+
 export function MapView({ studies, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
+  const layersRef = useRef({ districts: null, labels: null });
+  const [showDistricts, setShowDistricts] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     let map;
     (async () => {
-      const L = await loadLeaflet();
+      const [L, districts] = await Promise.all([loadLeaflet(), loadDistricts()]);
       if (cancelled || !containerRef.current) return;
 
-      // Fix Leaflet's default-icon path (the bundled images break under file:// or hashed builds).
-      // We use an inline SVG marker instead.
       const studyIcon = (status) => L.divIcon({
         className: '',
         iconSize: [22, 30],
@@ -57,22 +64,66 @@ export function MapView({ studies, onSelect }) {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
 
-      // Choctaw Nation approximate boundary
-      L.polygon(CHOCTAW_BOUNDARY, {
-        color: '#1E3D3B',
-        weight: 2.5,
-        fillColor: '#76B900',
-        fillOpacity: 0.06,
-        dashArray: '6,4',
-      }).bindTooltip('Choctaw Nation Reservation (approximate)', { sticky: true }).addTo(map);
+      // Choctaw Nation Council Districts (real boundary from CNOCD geojson)
+      const districtLayer = L.geoJSON(districts, {
+        style: () => ({
+          color: '#1E3D3B',
+          weight: 1.5,
+          fillColor: '#76B900',
+          fillOpacity: 0.07,
+          opacity: 0.85,
+        }),
+        onEachFeature: (feat, layer) => {
+          const p = feat.properties || {};
+          const num = p.NUM || p.NAME;
+          const studiesIn = countStudiesInFeature(studies, feat);
+          // Council member names intentionally not displayed — TIGER source data
+          // is not authoritative for current officeholders. Update the geojson
+          // and re-enable this row when refreshed from choctawnation.com.
+          const popupHtml = `<div style="font-family:Gill Sans Nova,Gill Sans MT,sans-serif;min-width:160px">
+            <div style="font-weight:600;color:#1E3D3B;font-size:13px">Council District ${num}</div>
+            <div style="color:#475569;font-size:11px;margin-top:2px">Studies in district: ${studiesIn}</div>
+          </div>`;
+          layer.bindPopup(popupHtml);
+          layer.on({
+            mouseover: (e) => e.target.setStyle({ fillOpacity: 0.18, weight: 2 }),
+            mouseout: (e) => districtLayer.resetStyle(e.target),
+          });
+        },
+      });
+
+      // Numbered badges at each district's interior point
+      const labelLayer = L.layerGroup();
+      districts.features.forEach((feat) => {
+        const p = feat.properties || {};
+        const lat = parseFloat(p.INTPTLAT);
+        const lng = parseFloat(p.INTPTLON);
+        if (!isFinite(lat) || !isFinite(lng)) return;
+        const num = p.NUM || (p.NAME || '').replace(/\D/g, '') || '?';
+        const marker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: 'cno-district-label',
+            html: `<div class="cno-num" title="Council District ${num}">${num}</div>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13],
+          }),
+          interactive: false,
+          keyboard: false,
+        });
+        labelLayer.addLayer(marker);
+      });
+
+      if (showDistricts) districtLayer.addTo(map);
+      if (showLabels) labelLayer.addTo(map);
+      layersRef.current = { districts: districtLayer, labels: labelLayer };
 
       // Known PWS reference markers
       KNOWN_SYSTEMS.forEach(s => {
         L.marker([s.lat, s.lng], { icon: knownIcon })
           .bindPopup(`<div style="font-family:Gill Sans Nova,Gill Sans MT,sans-serif">
-            <div style="font-weight:600;color:#1E3D3B;font-size:13px">${s.name}</div>
-            <div style="color:#475569;font-size:11px;margin-top:2px">${s.county} County</div>
-            <div style="color:#475569;font-size:11px">Source: ${s.waterBody}</div>
+            <div style="font-weight:600;color:#1E3D3B;font-size:13px">${escapeHtml(s.name)}</div>
+            <div style="color:#475569;font-size:11px;margin-top:2px">${escapeHtml(s.county)} County</div>
+            <div style="color:#475569;font-size:11px">Source: ${escapeHtml(s.waterBody)}</div>
             <div style="color:#94a3b8;font-size:10px;margin-top:4px;font-style:italic">Reference location — no study yet</div>
           </div>`)
           .addTo(map);
@@ -89,10 +140,10 @@ export function MapView({ studies, onSelect }) {
         const popupHtml = `<div style="font-family:Gill Sans Nova,Gill Sans MT,sans-serif;min-width:180px">
           <div style="font-weight:600;color:#1E3D3B;font-size:13px">${escapeHtml(s.name)}</div>
           <div style="color:#475569;font-size:11px;margin-top:2px">${escapeHtml(s.systemInfo?.systemName || '—')}</div>
-          ${s.systemInfo?.county ? `<div style="color:#475569;font-size:11px">${s.systemInfo.county} County</div>` : ''}
+          ${s.systemInfo?.county ? `<div style="color:#475569;font-size:11px">${escapeHtml(s.systemInfo.county)} County</div>` : ''}
           ${s.systemInfo?.waterBodySource ? `<div style="color:#475569;font-size:11px">Source: ${escapeHtml(s.systemInfo.waterBodySource)}</div>` : ''}
-          <div style="margin-top:6px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:${meta.color};color:#fff">${meta.label}</span></div>
-          <button data-id="${s.id}" class="map-open-btn" style="margin-top:8px;padding:4px 10px;background:#1E3D3B;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">Open Study →</button>
+          <div style="margin-top:6px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:${meta.color};color:#fff">${escapeHtml(meta.label)}</span></div>
+          <button data-id="${escapeHtml(s.id)}" class="map-open-btn" style="margin-top:8px;padding:4px 10px;background:#1E3D3B;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">Open Study →</button>
         </div>`;
         marker.bindPopup(popupHtml);
         marker.on('popupopen', (e) => {
@@ -102,10 +153,12 @@ export function MapView({ studies, onSelect }) {
         studyMarkers.push(marker);
       });
 
-      // Auto-fit if we have any user studies, otherwise show full reservation
+      // Fit to user studies if any, otherwise to the district extent
       if (studyMarkers.length > 0) {
         const group = L.featureGroup(studyMarkers);
         map.fitBounds(group.getBounds().pad(0.4));
+      } else {
+        try { map.fitBounds(districtLayer.getBounds().pad(0.05)); } catch { /* keep default */ }
       }
     })();
 
@@ -115,19 +168,47 @@ export function MapView({ studies, onSelect }) {
         mapRef.current.remove();
         mapRef.current = null;
       }
+      layersRef.current = { districts: null, labels: null };
     };
   }, [studies, onSelect]);
+
+  // Toggle district / label visibility without rebuilding the whole map
+  useEffect(() => {
+    const map = mapRef.current;
+    const { districts, labels } = layersRef.current;
+    if (!map) return;
+    if (districts) {
+      if (showDistricts && !map.hasLayer(districts)) districts.addTo(map);
+      if (!showDistricts && map.hasLayer(districts)) map.removeLayer(districts);
+    }
+    if (labels) {
+      if (showLabels && !map.hasLayer(labels)) labels.addTo(map);
+      if (!showLabels && map.hasLayer(labels)) map.removeLayer(labels);
+    }
+  }, [showDistricts, showLabels]);
 
   return (
     <div style={{ position: 'relative' }}>
       <div ref={containerRef} style={{ height: 520, borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }} />
-      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: 'var(--mid)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: 'var(--mid)', flexWrap: 'wrap', alignItems: 'center' }}>
         <Legend color="#76B900" label="Completed study" />
         <Legend color="#287575" label="In-progress study" />
         <Legend color="#94a3b8" label="Draft study" />
         <Legend color="#1E3D3B" label="Reference PWS (no study)" small />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span className="cno-num" style={{ width: 16, height: 16, fontSize: 10 }}>3</span>
+          Council District
+        </span>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={showDistricts} onChange={e => setShowDistricts(e.target.checked)} />
+          Districts
+        </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} />
+          District numbers
+        </label>
         <span style={{ marginLeft: 'auto', color: 'var(--dim)', fontSize: 10 }}>
-          Boundary is an approximation for visual reference. © OpenStreetMap contributors.
+          Boundaries: TIGER/Line CNO Council Districts. © OpenStreetMap contributors.
         </span>
       </div>
     </div>
@@ -152,5 +233,39 @@ function Legend({ color, label, small }) {
 }
 
 function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  return String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+// Ray-casting point-in-polygon for [lng, lat] rings
+function pointInRing(lng, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > lat) !== (yj > lat))
+      && (lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+function pointInFeature(lng, lat, feat) {
+  const g = feat.geometry || {};
+  if (g.type === 'Polygon') {
+    return pointInRing(lng, lat, g.coordinates[0]);
+  }
+  if (g.type === 'MultiPolygon') {
+    return g.coordinates.some(poly => pointInRing(lng, lat, poly[0]));
+  }
+  return false;
+}
+function countStudiesInFeature(studies, feat) {
+  if (!studies) return 0;
+  let n = 0;
+  for (const s of studies) {
+    const lat = s.systemInfo?.latitude;
+    const lng = s.systemInfo?.longitude;
+    if (lat == null || lng == null) continue;
+    if (pointInFeature(lng, lat, feat)) n++;
+  }
+  return n;
 }

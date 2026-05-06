@@ -130,9 +130,19 @@ function chartParagraph(chart, widthPx = 600) {
 }
 
 export async function exportDocx(report, filename, sealUint8) {
-  const fundChart = await renderFundChart(report.proj);
-  const revExpChart = await renderRevExpChart(report.proj);
-  const breakdownChart = report.expCats.length > 0 ? await renderExpenseBreakdown(report.expCats) : null;
+  // Each chart is rendered independently so a single chart-render failure
+  // (e.g. Chart.js exception, DOM oddity in some browsers) doesn't kill the
+  // whole DOCX export — the document is produced without the failing chart
+  // and a console warning is emitted for diagnostics.
+  let fundChart = null, revExpChart = null, breakdownChart = null;
+  try { fundChart = await renderFundChart(report.proj); }
+  catch (e) { console.error('DOCX: fund chart render failed', e); }
+  try { revExpChart = await renderRevExpChart(report.proj); }
+  catch (e) { console.error('DOCX: rev/exp chart render failed', e); }
+  if (report.expCats.length > 0) {
+    try { breakdownChart = await renderExpenseBreakdown(report.expCats); }
+    catch (e) { console.error('DOCX: expense breakdown chart render failed', e); }
+  }
 
   // Cover header (with seal if available)
   const headerKids = [];
@@ -255,14 +265,20 @@ export async function exportDocx(report, filename, sealUint8) {
     [{ text: 'Fund Balance (Proposed)' }, ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.fundBalance) }))],
   ));
 
-  children.push(H('Projection Charts', HeadingLevel.HEADING_2));
-  children.push(P('Fund Balance Over Five Years', { bold: true, color: TEAL, after: 60 }));
-  children.push(chartParagraph(fundChart));
-  children.push(P('Revenue vs. Expenses', { bold: true, color: TEAL, after: 60 }));
-  children.push(chartParagraph(revExpChart));
-  if (breakdownChart) {
-    children.push(P('Expense Breakdown by Category', { bold: true, color: TEAL, after: 60 }));
-    children.push(chartParagraph(breakdownChart));
+  if (fundChart || revExpChart || breakdownChart) {
+    children.push(H('Projection Charts', HeadingLevel.HEADING_2));
+    if (fundChart) {
+      children.push(P('Fund Balance Over Five Years', { bold: true, color: TEAL, after: 60 }));
+      children.push(chartParagraph(fundChart));
+    }
+    if (revExpChart) {
+      children.push(P('Revenue vs. Expenses', { bold: true, color: TEAL, after: 60 }));
+      children.push(chartParagraph(revExpChart));
+    }
+    if (breakdownChart) {
+      children.push(P('Expense Breakdown by Category', { bold: true, color: TEAL, after: 60 }));
+      children.push(chartParagraph(breakdownChart));
+    }
   }
 
   // Operating ratio details

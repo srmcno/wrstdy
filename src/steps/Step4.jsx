@@ -68,6 +68,14 @@ export function Step4({ study }) {
         <h2 style={{ fontSize: 15, color: 'var(--teal)', marginBottom: 3 }}>Financial Health Scorecard</h2>
         <p style={{ color: 'var(--mid)', fontSize: 12 }}>Key financial ratios and benchmarks — matching the CNO Water Rate Study Dashboard.</p>
       </div>
+      {!mhi && (
+        <div className="al al-w">
+          <strong>Affordability Index unavailable.</strong>{' '}
+          Median Monthly Household Income is required to calculate this metric.
+          Go to <strong>Step 1 → Demographics & MHI</strong> and enter the
+          Census ACS 5-year estimate for the service area.
+        </div>
+      )}
       <div className="card">
         <div className="sh">System Scorecard</div>
         <div style={{ overflowX: 'auto' }}>
