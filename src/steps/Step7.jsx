@@ -5,7 +5,7 @@ import {
   affordabilityIndex, cost5000, calc5Yr, debtToIncome, baseCoverage,
   costPer1000, operatingRatio, nv, fmt
 } from '../lib/calc.js';
-import { chat, KEY_STORAGE, BUILD_KEY, MODEL_HEAVY as MODEL, safeGet, safeSet } from '../lib/ai.js';
+import { chat, KEY_STORAGE, BUILD_KEY, AI_PROXY_URL, USE_AI_PROXY, MODEL_HEAVY as MODEL, safeGet, safeSet } from '../lib/ai.js';
 
 const SYSTEM_PROMPT = `You are a senior financial analyst for the Choctaw Nation Office of Water Resource Management (OWRM). You write rate-study analyses for tribal public water systems whose boards include non-experts.
 
@@ -83,8 +83,8 @@ export function Step7({ study, onField }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [apiKey, setApiKey] = useState(() => safeGet(KEY_STORAGE) || BUILD_KEY);
-  const usingBuildKey = !safeGet(KEY_STORAGE) && !!BUILD_KEY;
+  const [apiKey, setApiKey] = useState(() => USE_AI_PROXY ? '' : safeGet(KEY_STORAGE) || BUILD_KEY);
+  const usingBuildKey = !USE_AI_PROXY && !safeGet(KEY_STORAGE) && !!BUILD_KEY;
   const [followUp, setFollowUp] = useState('');
   const scrollRef = useRef(null);
 
@@ -113,7 +113,7 @@ export function Step7({ study, onField }) {
   };
 
   async function runInitial() {
-    if (!apiKey) { setErr('Set your Anthropic API key first (Settings).'); return; }
+    if (!USE_AI_PROXY && !apiKey) { setErr('Set your Anthropic API key first (Settings).'); return; }
     setErr('');
     setLoading(true);
     try {
@@ -136,7 +136,7 @@ export function Step7({ study, onField }) {
   async function sendFollowUp() {
     const text = followUp.trim();
     if (!text) return;
-    if (!apiKey) { setErr('Set your Anthropic API key first (Settings).'); return; }
+    if (!USE_AI_PROXY && !apiKey) { setErr('Set your Anthropic API key first (Settings).'); return; }
     setErr('');
     setLoading(true);
     try {
@@ -181,7 +181,7 @@ export function Step7({ study, onField }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn b-out btn-sm" onClick={() => setShowKey(s => !s)} title="API key settings">⚙ Settings</button>
+          <button className="btn b-out btn-sm" onClick={() => setShowKey(s => !s)} title="AI connection settings">⚙ Settings</button>
           {history.length > 0 && (
             <button className="btn b-out btn-sm" onClick={clearConversation}>Clear</button>
           )}
@@ -195,17 +195,25 @@ export function Step7({ study, onField }) {
 
       {showKey && (
         <div className="card" style={{ background: 'var(--surface)' }}>
-          <div className="sh">Anthropic API Key</div>
-          <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 8 }}>
-            {usingBuildKey
-              ? 'Using the API key baked in at build time (VITE_ANTHROPIC_KEY). Override here for this device only.'
-              : "Stored in your browser's localStorage. Required only for the AI analysis feature."}
-            {' '}Get a key at <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>console.anthropic.com</a>.
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="inp" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-ant-..." style={{ flex: 1 }} />
-            <button className="btn b-lime btn-sm" onClick={saveKey}>Save</button>
-          </div>
+          <div className="sh">AI Connection</div>
+          {USE_AI_PROXY ? (
+            <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 0 }}>
+              Using the configured server-side AI proxy at <code>{AI_PROXY_URL}</code>. Anthropic API keys stay on the proxy server and are not stored in this browser.
+            </p>
+          ) : (
+            <>
+              <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 8 }}>
+                {usingBuildKey
+                  ? 'Using the API key baked in at build time (VITE_ANTHROPIC_KEY). Override here for this device only. Use this only for trusted local/internal builds.'
+                  : "Local/internal direct-browser mode: stored in this browser's localStorage and required only for the AI analysis feature."}
+                {' '}Get a key at <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>console.anthropic.com</a>.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="inp" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-ant-..." style={{ flex: 1 }} />
+                <button className="btn b-lime btn-sm" onClick={saveKey}>Save</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
