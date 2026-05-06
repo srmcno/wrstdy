@@ -28,3 +28,26 @@ test('tierTopAmounts uses each tier cumulative gallon breakpoint', () => {
   );
   assert.deepEqual(tierTopAmounts(minCharge, tiers), [18, 36, 76]);
 });
+
+import { budgetTotal, classMonthlyIncome, totalRevenue } from './calc.js';
+import { normalizeStudy } from './state.js';
+
+test('normalizes incomplete imported studies so button-driven calculations do not crash', () => {
+  const study = normalizeStudy({
+    name: 'Legacy import',
+    classes: [{ id: 'res', enabled: true, cur: { customers: '10' } }],
+    curBudget: { emp: { salaries: '100' } },
+    forecast: { knownItems: [{ label: 'Grant' }] },
+  });
+
+  assert.equal(study.classes.find(c => c.id === 'res').cur.tiers.length, 6);
+  assert.equal(study.classes.find(c => c.id === 'res').prop.minCharge, '');
+  assert.equal(study.curBudget.ofc.rent, '');
+  assert.deepEqual(study.forecast.knownItems[0].vals, ['', '', '', '', '']);
+});
+
+test('calculation helpers tolerate partially populated classes and budgets', () => {
+  assert.deepEqual(classMonthlyIncome({ enabled: true }, true), { monthly: 0, annual: 0, fixed: 0, volumetric: 0 });
+  assert.equal(totalRevenue([{ enabled: true }], true).monthly, 0);
+  assert.equal(budgetTotal({ emp: { salaries: '10' } }).total, 10);
+});

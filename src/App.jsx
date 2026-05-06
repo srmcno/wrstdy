@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { VER } from './lib/constants.js';
-import { loadDB, saveDB, onSaveStatus, newStudy } from './lib/state.js';
+import { loadDB, saveDB, onSaveStatus, newStudy, normalizeStudy } from './lib/state.js';
 import { Header } from './components/Header.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
 import { Dashboard } from './components/Dashboard.jsx';
@@ -110,10 +110,10 @@ export default function App() {
           pushToast('Invalid study file — missing "study" or "studies" key.', { kind: 'err' });
           return;
         }
-        const imp = arr.map(s => ({
+        const imp = arr.map(s => normalizeStudy({
           ...s,
-          id: crypto.randomUUID(),
-          name: s.name + ' (Imported)',
+          id: undefined,
+          name: (s.name || 'Rate Study') + ' (Imported)',
           updatedAt: new Date().toISOString(),
         }));
         setStudies(p => [...imp, ...p]);
