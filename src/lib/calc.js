@@ -17,15 +17,9 @@ export function calcBill(minCharge, tiers, gallons) {
   return bill;
 }
 
-// Cumulative bill at the top of each tier block (1,000 gal blocks)
+// Cumulative bill at each tier's configured gallon breakpoint.
 export function tierTopAmounts(minCharge, tiers) {
-  const res = [];
-  let cum = nv(minCharge);
-  for (let i = 0; i < tiers.length; i++) {
-    cum += nv(tiers[i].rate); // each 1,000 gal block × rate
-    res.push(cum);
-  }
-  return res;
+  return tiers.map(t => calcBill(minCharge, tiers, nv(t.gal)));
 }
 
 export function classMonthlyIncome(cls, isProposed) {
