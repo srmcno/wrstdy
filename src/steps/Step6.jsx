@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { defBudget } from '../lib/state.js';
 import { DEFAULT_SCENARIO_ADJUSTMENTS, scenarioForClasses } from '../lib/scenarios.js';
 import { budgetTotal, totalRevenue, classMonthlyIncome, affordabilityIndex, nv, fmt } from '../lib/calc.js';
+import { ConfirmModal } from '../components/ConfirmModal.jsx';
 
 export function Step6({ study, onField }) {
   const classes = study.classes || [];
@@ -12,6 +13,7 @@ export function Step6({ study, onField }) {
     rateBasis: {},
     adjustments: defaultAdjustments
   });
+  const [pendingPreset, setPendingPreset] = useState(null);
   const useProposedRates = (id) => (scenario.rateBasis[id] || 'proposed') === 'proposed';
   const rateBasisLabel = (id) => useProposedRates(id) ? 'Proposed rates' : 'Current rates';
   const multiplier = (id) => scenario.adjustments[id] || 1;
@@ -19,6 +21,15 @@ export function Step6({ study, onField }) {
     rateBasis: classes.reduce((acc, c) => ({ ...acc, [c.id]: basis }), {}),
     adjustments
   });
+  // True when the user has changed any multiplier from the default 1.0.
+  const hasManualEdits = () => Object.values(scenario.adjustments).some(v => Number(v) !== 1);
+  const requestPreset = (preset) => {
+    if (hasManualEdits()) {
+      setPendingPreset(preset);
+    } else {
+      preset.action();
+    }
+  };
   const adjust = (id, val) => setScenario(s => ({
     ...s,
     adjustments: { ...s.adjustments, [id]: nv(val) }
@@ -28,11 +39,11 @@ export function Step6({ study, onField }) {
   const propRevAdj = classes.filter(c => c.enabled).reduce((s, c) => s + scenarioIncome(c), 0);
   const net = propRevAdj - propBT.total;
   const presets = [
-    { label: 'Shift to Residential', action: () => applyScenario({ res: 1.15, pas: 1, com: 0.95, who: 0.95, c5: 1, c6: 1, c7: 1 }), hint: '+15% res, -5% com/who' },
-    { label: 'Shift to Commercial', action: () => applyScenario({ res: 0.95, pas: 1, com: 1.20, who: 1.10, c5: 1, c6: 1, c7: 1 }), hint: '-5% res, +20% com' },
-    { label: 'Rate Freeze (Current)', action: () => applyScenario(defaultAdjustments, 'current'), hint: 'Use current rates' },
+    { label: 'Shift to Residential', action: () => applyScenario({ res: 1.15, pas: 1, com: 0.95, who: 0.95, c5: 1, c6: 1, c7: 1 }), hint: '+15% res, −5% com/who' },
+    { label: 'Shift to Commercial', action: () => applyScenario({ res: 0.95, pas: 1, com: 1.20, who: 1.10, c5: 1, c6: 1, c7: 1 }), hint: '−5% res, +20% com' },
+    { label: 'Hold Current Rates', action: () => applyScenario(defaultAdjustments, 'current'), hint: 'Use current rates as basis' },
     { label: 'High Burden', action: () => applyScenario({ res: 1.25, pas: 1.10, com: 1.15, who: 1.10, c5: 1, c6: 1, c7: 1 }), hint: '+25% res, +15% com' },
-    { label: 'Reset', action: () => applyScenario(defaultAdjustments), hint: 'Back to proposed' }
+    { label: 'Reset', action: () => applyScenario(defaultAdjustments), hint: 'Back to proposed (1.00× across)' }
   ];
   return (
     <div className="stack">
@@ -45,12 +56,22 @@ export function Step6({ study, onField }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {presets.map(p => (
             <div key={p.label} style={{ textAlign: 'center' }}>
-              <button className="btn b-out btn-sm" onClick={() => applyScenario(p.adjustments, p.basis, p.label)}>{p.label}</button>
+              <button className="btn b-out btn-sm" onClick={() => requestPreset(p)}>{p.label}</button>
               <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 3 }}>{p.hint}</div>
             </div>
           ))}
         </div>
       </div>
+      {pendingPreset && (
+        <ConfirmModal
+          title={`Apply preset "${pendingPreset.label}"?`}
+          message="This will overwrite your manual multiplier adjustments for this scenario. Your current and proposed rates from earlier steps are not affected."
+          confirmLabel="Apply preset"
+          destructive={false}
+          onConfirm={() => { pendingPreset.action(); setPendingPreset(null); }}
+          onCancel={() => setPendingPreset(null)}
+        />
+      )}
       <div className="card">
         <div className="sh">Manual Adjustments — Rate Multiplier per Class</div>
         <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 12 }}>1.00 = active rate basis unchanged. 1.10 = +10% on that basis. 0.90 = -10%. Presets identify whether the scenario uses current or proposed rates.</p>

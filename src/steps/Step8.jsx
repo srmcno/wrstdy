@@ -130,9 +130,17 @@ export function Step8({ study, onField }) {
       <div className="print-only" style={{ marginBottom: 16, paddingBottom: 12, borderBottom: '2px solid #1E3D3B' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8 }}>
           <img src={SEAL} alt="Seal" style={{ width: 52, height: 52 }} />
-          <div>
-            <div style={{ fontSize: 15 }}>CNO Water Rate Study — Report</div>
-            <div style={{ fontSize: 13, marginTop: 2 }}>{new Date().toLocaleDateString()}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>CNO Water Rate Study — Report</div>
+            <div style={{ fontSize: 12, marginTop: 2, color: '#475569' }}>
+              {si.systemName || '[System Name]'}
+              {si.pwsId ? ` · PWS ${si.pwsId}` : ''}
+              {si.county ? ` · ${si.county} County, OK` : ''}
+            </div>
+            <div style={{ fontSize: 11, marginTop: 2, color: '#94a3b8' }}>
+              Prepared {new Date().toLocaleDateString()}
+              {si.studyYear ? ` · Study Year ${si.studyYear}` : ''}
+            </div>
           </div>
         </div>
       </div>

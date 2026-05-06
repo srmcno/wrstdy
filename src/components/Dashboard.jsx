@@ -14,9 +14,9 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
         <div>
           <h1 style={{ fontSize: 22, color: 'var(--teal)', marginBottom: 6 }}>Water Rate Studies</h1>
           <p style={{ color: 'var(--mid)', lineHeight: 1.65, maxWidth: 620, fontSize: 13 }}>
-            Conduct and manage rate studies for tribal public water systems. Walks through customer
-            classes, budget, financial metrics, 5-year projection, scenarios, and generates a
-            board-ready report with PDF and Word exports.
+            Plan water rates for Choctaw Nation public water systems. Capture system info, customer
+            classes, and budget, then compare current vs. proposed rates and generate a board-ready
+            report your council can act on — PDF and Word exports included.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
