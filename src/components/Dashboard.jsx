@@ -9,7 +9,7 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
   const mappedCount = (studies || []).filter(s => s.systemInfo?.latitude != null).length;
 
   return (
-    <div style={{ padding: '28px 28px 48px' }}>
+    <div className="dash-wrap">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, marginBottom: 22, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 22, color: 'var(--teal)', marginBottom: 6 }}>Water Rate Studies</h1>
@@ -19,7 +19,7 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
             report your council can act on — PDF and Word exports included.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="dash-tabs">
           <button
             className={'sub-tab' + (view === 'list' ? ' on' : '')}
             onClick={() => setView('list')}
@@ -36,22 +36,26 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
       </div>
 
       {studies.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '52px 28px', maxWidth: 540, margin: '0 auto' }}>
-          <div style={{ fontSize: 44, marginBottom: 16, opacity: .35 }}>💧</div>
-          <h2 style={{ fontSize: 17, color: 'var(--teal)', marginBottom: 8 }}>No Rate Studies Yet</h2>
-          <p style={{ color: 'var(--mid)', fontSize: 13, marginBottom: 22, lineHeight: 1.6 }}>
-            Create a new study to begin, or load a sample study to see what the tool can do — full
-            data already filled in across all eight steps.
-          </p>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button className="btn b-lime" onClick={onCreate}>+ Create New Study</button>
-            <button
-              className="btn b-out"
-              onClick={() => onLoadSample(makeSampleStudy())}
-              title="Loads a fully-populated example study you can explore and modify"
-            >
-              ✨ Load Sample Study
-            </button>
+        <div className="card" style={{ maxWidth: 540, margin: '0 auto' }}>
+          <div className="dash-empty">
+            <div className="dash-empty-icon" style={{ opacity: .35 }}>💧</div>
+            <div>
+              <h2 style={{ fontSize: 17, color: 'var(--teal)', marginBottom: 8 }}>No Rate Studies Yet</h2>
+              <p style={{ color: 'var(--mid)', fontSize: 13, lineHeight: 1.6 }}>
+                Create a new study to begin, or load a sample study to see what the tool can do — full
+                data already filled in across all eight steps.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button className="btn b-lime" onClick={onCreate}>+ Create New Study</button>
+              <button
+                className="btn b-out"
+                onClick={() => onLoadSample(makeSampleStudy())}
+                title="Loads a fully-populated example study you can explore and modify"
+              >
+                ✨ Load Sample Study
+              </button>
+            </div>
           </div>
         </div>
       ) : view === 'map' ? (
@@ -71,7 +75,7 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
         </>
       ) : (
         <>
-          <div className="g4" style={{ marginBottom: 20 }}>
+          <div className="g4 dash-stats">
             {[
               { val: studies.length, l: 'Total Studies' },
               { val: studies.filter(s => s.status === 'complete').length, l: 'Completed' },
