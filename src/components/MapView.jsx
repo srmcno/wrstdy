@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { CHOCTAW_BOUNDARY, CHOCTAW_CENTER, CHOCTAW_ZOOM, KNOWN_SYSTEMS } from '../lib/choctaw-boundary.js';
+import { statusMeta } from '../lib/status.js';
 
 // Lazy-loads Leaflet so it doesn't bloat the initial bundle.
 async function loadLeaflet() {
@@ -29,7 +30,7 @@ export function MapView({ studies, onSelect }) {
         html: `<div style="width:22px;height:30px;position:relative">
           <svg viewBox="0 0 22 30" width="22" height="30">
             <path d="M11 0 C 4 0 0 5 0 11 C 0 18 11 30 11 30 C 11 30 22 18 22 11 C 22 5 18 0 11 0 Z"
-                  fill="${status === 'complete' ? '#76B900' : status === 'in-progress' ? '#287575' : '#94a3b8'}"
+                  fill="${statusMeta(status).color}"
                   stroke="#fff" stroke-width="1.5"/>
             <circle cx="11" cy="11" r="4" fill="#fff"/>
           </svg>
@@ -83,13 +84,14 @@ export function MapView({ studies, onSelect }) {
         const lat = s.systemInfo?.latitude;
         const lng = s.systemInfo?.longitude;
         if (lat == null || lng == null) return;
+        const meta = statusMeta(s.status);
         const marker = L.marker([lat, lng], { icon: studyIcon(s.status) }).addTo(map);
         const popupHtml = `<div style="font-family:Gill Sans Nova,Gill Sans MT,sans-serif;min-width:180px">
           <div style="font-weight:600;color:#1E3D3B;font-size:13px">${escapeHtml(s.name)}</div>
           <div style="color:#475569;font-size:11px;margin-top:2px">${escapeHtml(s.systemInfo?.systemName || '—')}</div>
           ${s.systemInfo?.county ? `<div style="color:#475569;font-size:11px">${s.systemInfo.county} County</div>` : ''}
           ${s.systemInfo?.waterBodySource ? `<div style="color:#475569;font-size:11px">Source: ${escapeHtml(s.systemInfo.waterBodySource)}</div>` : ''}
-          <div style="margin-top:6px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:${s.status === 'complete' ? '#76B900' : s.status === 'in-progress' ? '#287575' : '#94a3b8'};color:#fff">${s.status}</span></div>
+          <div style="margin-top:6px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:${meta.color};color:#fff">${meta.label}</span></div>
           <button data-id="${s.id}" class="map-open-btn" style="margin-top:8px;padding:4px 10px;background:#1E3D3B;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">Open Study →</button>
         </div>`;
         marker.bindPopup(popupHtml);

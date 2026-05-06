@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { fmt } from '../lib/calc.js';
 import { MapView } from './MapView.jsx';
 import { makeSampleStudy } from '../lib/sample-study.js';
+import { statusMeta } from '../lib/status.js';
 
 export function Dashboard({ studies, onSelect, onCreate, onLoadSample }) {
   const [view, setView] = useState('list'); // 'list' | 'map'
@@ -93,7 +94,7 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample }) {
                     <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.systemInfo?.pwsId || '—'}</td>
                     <td>{s.systemInfo?.county || '—'}</td>
                     <td>{s.systemInfo?.studyYear || '—'}</td>
-                    <td><span className={'bs ' + (s.status === 'complete' ? 'bsc' : s.status === 'in-progress' ? 'bsp' : 'bsd')}>{s.status}</span></td>
+                    <td><span className={'bs ' + statusMeta(s.status).badgeClass}>{statusMeta(s.status).label}</span></td>
                     <td style={{ fontSize: 12, color: 'var(--dim)' }}>{fmt.date(s.updatedAt)}</td>
                     <td><button className="btn b-teal btn-xs" onClick={(e) => { e.stopPropagation(); onSelect(s.id); }}>Open</button></td>
                   </tr>
