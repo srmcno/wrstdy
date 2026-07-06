@@ -215,10 +215,11 @@ export async function exportDocx(report, filename, sealUint8) {
   children.push(buildTable(
     [{ text: 'Metric' }, { text: 'Current', align: AlignmentType.RIGHT }, { text: 'Proposed', align: AlignmentType.RIGHT }],
     [
-      ['Cost per 1,000 gallons', { text: fmt.c(report.curCP1K), align: AlignmentType.RIGHT }, { text: fmt.c(report.propCP1K), align: AlignmentType.RIGHT }],
-      ['Operating Ratio', { text: report.curOR.toFixed(2), align: AlignmentType.RIGHT }, { text: report.propOR.toFixed(2), align: AlignmentType.RIGHT }],
+      ['Cost per 1,000 gallons', { text: fmt.cd(report.curCP1K, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.cd(report.propCP1K, 'N/A'), align: AlignmentType.RIGHT }],
+      ['Operating Ratio', { text: fmt.ratio(report.curOR, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.ratio(report.propOR, 'N/A'), align: AlignmentType.RIGHT }],
       ['Bill at 5,000 gal', { text: fmt.c(report.cost5kCur), align: AlignmentType.RIGHT }, { text: fmt.c(report.cost5kProp), align: AlignmentType.RIGHT }],
-      ['Affordability Index', { text: report.mhi ? fmt.p(report.curAI) : 'N/A', align: AlignmentType.RIGHT }, { text: report.mhi ? fmt.p(report.propAI) : 'N/A', align: AlignmentType.RIGHT }],
+      ['Affordability Index', { text: fmt.pd(report.curAI, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.pd(report.propAI, 'N/A'), align: AlignmentType.RIGHT }],
+      ['Debt Service Coverage (DSCR)', { text: fmt.ratio(report.curDSCR, 'No debt'), align: AlignmentType.RIGHT }, { text: fmt.ratio(report.propDSCR, 'No debt'), align: AlignmentType.RIGHT }],
     ],
   ));
 
@@ -253,32 +254,43 @@ export async function exportDocx(report, filename, sealUint8) {
     ]),
   ));
 
+  children.push(H('True Cost of Service', HeadingLevel.HEADING_2));
+  children.push(P('What 1,000 gallons costs the system to produce and deliver versus what 1,000 gallons earns in rate revenue. When cost exceeds revenue, rates are being subsidized by reserves.', { color: MID }));
+  const bePct = (v) => v == null ? 'N/A' : (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+  children.push(buildTable(
+    [{ text: '' }, { text: 'Current Rates', align: AlignmentType.RIGHT }, { text: 'Proposed Rates', align: AlignmentType.RIGHT }],
+    [
+      ['Annual operating expenses', { text: fmt.c(report.tcsCur.annualExpenses), align: AlignmentType.RIGHT }, { text: fmt.c(report.tcsProp.annualExpenses), align: AlignmentType.RIGHT }],
+      ['Annual gallons sold', { text: report.tcsCur.annualGallons.toLocaleString(), align: AlignmentType.RIGHT }, { text: report.tcsProp.annualGallons.toLocaleString(), align: AlignmentType.RIGHT }],
+      ['True cost per 1,000 gallons', { text: fmt.cd(report.tcsCur.costPer1k, 'N/A'), align: AlignmentType.RIGHT, bold: true }, { text: fmt.cd(report.tcsProp.costPer1k, 'N/A'), align: AlignmentType.RIGHT, bold: true }],
+      ['Average revenue per 1,000 gallons', { text: fmt.cd(report.tcsCur.revenuePer1k, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.cd(report.tcsProp.revenuePer1k, 'N/A'), align: AlignmentType.RIGHT }],
+    ],
+    ['Adjustment needed to break even', bePct(report.tcsCur.breakEvenAdjustment), bePct(report.tcsProp.breakEvenAdjustment)],
+  ));
+
   children.push(H('Cost to Produce & Five-Year Outlook'));
-  children.push(P('Providing safe, reliable drinking water and/or wastewater services requires consistent investment in operations, infrastructure, and personnel. The five-year outlook projects what those costs become under realistic inflation scenarios.', { color: MID }));
+  children.push(P(`Providing safe, reliable drinking water and/or wastewater services requires consistent investment in operations, infrastructure, and personnel. The fund balance row follows the ${report.fcInflation}% forecast expense row (including any scheduled debt service and known one-time items); the 3% and 5% rows are sensitivity comparisons only.`, { color: MID }));
   children.push(buildTable(
     [{ text: 'Scenario' }, ...report.fiveYearOutlook.map(r => ({ text: r.yr, align: AlignmentType.RIGHT }))],
     [
       ['Annual Revenue (Proposed)', ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.revenue), align: AlignmentType.RIGHT }))],
-      ['Annual Expenses (3% inflation)', ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.exp3), align: AlignmentType.RIGHT }))],
-      ['Annual Expenses (5% inflation)', ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.exp5), align: AlignmentType.RIGHT }))],
+      [`Projected Expenses (${report.fcInflation}% forecast)`, ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.exp), align: AlignmentType.RIGHT }))],
+      ['Sensitivity: 3% inflation', ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.exp3), align: AlignmentType.RIGHT }))],
+      ['Sensitivity: 5% inflation', ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.exp5), align: AlignmentType.RIGHT }))],
     ],
-    [{ text: 'Fund Balance (Proposed)' }, ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.fundBalance) }))],
+    [{ text: `Fund Balance (Proposed, ${report.fcInflation}%)` }, ...report.fiveYearOutlook.map(r => ({ text: fmt.c(r.fundBalance) }))],
   ));
 
-  if (fundChart || revExpChart || breakdownChart) {
+  {
     children.push(H('Projection Charts', HeadingLevel.HEADING_2));
-    if (fundChart) {
-      children.push(P('Fund Balance Over Five Years', { bold: true, color: TEAL, after: 60 }));
-      children.push(chartParagraph(fundChart));
-    }
-    if (revExpChart) {
-      children.push(P('Revenue vs. Expenses', { bold: true, color: TEAL, after: 60 }));
-      children.push(chartParagraph(revExpChart));
-    }
-    if (breakdownChart) {
-      children.push(P('Expense Breakdown by Category', { bold: true, color: TEAL, after: 60 }));
-      children.push(chartParagraph(breakdownChart));
-    }
+    const chartSlot = (title, chart) => {
+      children.push(P(title, { bold: true, color: TEAL, after: 60 }));
+      if (chart) children.push(chartParagraph(chart));
+      else children.push(P('Chart unavailable — it could not be rendered during export. The underlying figures appear in the tables of this report.', { color: DIM, italic: true, size: 18 }));
+    };
+    chartSlot('Fund Balance Over Five Years', fundChart);
+    chartSlot('Revenue vs. Expenses', revExpChart);
+    if (report.expCats.length > 0) chartSlot('Expense Breakdown by Category', breakdownChart);
   }
 
   // Operating ratio details
@@ -286,15 +298,23 @@ export async function exportDocx(report, filename, sealUint8) {
   children.push(P('Operating Ratio', { bold: true, color: TEAL, after: 60 }));
   children.push(P('The Operating Ratio compares total operational revenues to operational expenses. A ratio of 1.0 means break-even; 1.25 or higher indicates a healthy margin for reinvestment and reserves; below 1.0 means rates should rise or costs should be cut.', { color: MID }));
 
+  children.push(P('Debt Service Coverage Ratio (DSCR)', { bold: true, color: TEAL, after: 60 }));
+  children.push(P(`Net revenue after operating expenses divided by annual debt payments — the covenant metric USDA Rural Development and OWRB lenders typically require at 1.10–1.25 or better. Current: ${fmt.ratio(report.curDSCR, 'no debt in budget')}. Proposed: ${fmt.ratio(report.propDSCR, 'no debt in budget')}.`, { color: MID }));
+
   if (report.mhi > 0) {
     children.push(P('Affordability Index', { bold: true, color: TEAL, after: 60 }));
-    children.push(P('Cost of 5,000 gal ÷ Monthly MHI. USDA Rural Development considers utilities grant-eligible above 1.50%; below 2.00% is considered affordable by EPA standards.', { color: MID }));
+    children.push(P('Cost of 5,000 gal ÷ Monthly MHI. USDA Rural Development considers utilities grant-eligible when the index exceeds 1.50% — a higher burden supports the grant case. Below 2.00% is considered affordable by EPA standards.', { color: MID }));
+    const aiNote = (v) => v == null ? 'N/A'
+      : v < 0.015 ? 'Highly affordable — below USDA RD grant threshold'
+      : v < 0.02 ? 'Affordable; supports USDA RD grant case'
+      : 'Affordability concern — strengthens grant case';
     children.push(buildTable(
       [{ text: '' }, { text: 'Current', align: AlignmentType.RIGHT }, { text: 'Proposed', align: AlignmentType.RIGHT }],
       [
         ['5,000 gal Bill', { text: fmt.c(report.cost5kCur), align: AlignmentType.RIGHT }, { text: fmt.c(report.cost5kProp), align: AlignmentType.RIGHT }],
         ['Monthly MHI', { text: fmt.c(report.mhi), align: AlignmentType.RIGHT }, { text: fmt.c(report.mhi), align: AlignmentType.RIGHT }],
-        ['Affordability Index', { text: fmt.p(report.curAI), align: AlignmentType.RIGHT }, { text: fmt.p(report.propAI), align: AlignmentType.RIGHT }],
+        ['Affordability Index', { text: fmt.pd(report.curAI, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.pd(report.propAI, 'N/A'), align: AlignmentType.RIGHT }],
+        ['Interpretation', { text: aiNote(report.curAI), align: AlignmentType.RIGHT }, { text: aiNote(report.propAI), align: AlignmentType.RIGHT }],
       ],
     ));
   }
@@ -323,6 +343,7 @@ export async function exportDocx(report, filename, sealUint8) {
       report.revCur.monthly > 0 ? ((report.revProp.monthly - report.revCur.monthly) / report.revCur.monthly * 100).toFixed(1) + '%' : '—',
     ],
   ));
+  children.push(P('In this revenue table, green indicates additional revenue to the system (an increase in the $ Δ column).', { color: DIM, italic: true, size: 18 }));
 
   if (report.scenario?.rows?.length) {
     children.push(H(`Active Scenario: ${report.scenario.label || 'Custom'}`, HeadingLevel.HEADING_2));
@@ -368,6 +389,7 @@ export async function exportDocx(report, filename, sealUint8) {
       ['Total', fmt.c(report.curBT.total), fmt.c(report.propBT.total),
        (report.propBT.total - report.curBT.total >= 0 ? '+' : '') + fmt.c(report.propBT.total - report.curBT.total)],
     ));
+    children.push(P('In this expense table, red indicates additional cost to the system (an increase in the $ Δ column) — the opposite color convention from the revenue tables above.', { color: DIM, italic: true, size: 18 }));
   }
 
   if (report.aiAnalysis) {
@@ -408,6 +430,15 @@ export async function exportDocx(report, filename, sealUint8) {
       }
     }
   }
+
+  children.push(H('Data Quality & Limitations'));
+  children.push(P(report.dataQualityStatement, { color: MID }));
+  children.push(P(
+    report.anyDist
+      ? 'Revenue basis: customer usage distribution — revenue is billed bracket-by-bracket against the tier structure.'
+      : 'Revenue basis: class averages — every customer is assumed to use the class average, which understates revenue for tiered rates. Entering a customer usage distribution in the tool improves accuracy.',
+    { color: DIM, italic: true, size: 18 },
+  ));
 
   children.push(H('Final Recommendations'));
   children.push(P('The Choctaw Nation recommends that each system conduct a rate analysis and adjust rates as needed to ensure financial sustainability, proper infrastructure funding, and continued service to tribal members.'));

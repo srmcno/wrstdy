@@ -329,10 +329,10 @@ export async function exportPDF(report, filename) {
   // the right-arrow glyph is missing from helvetica's encoding and renders as
   // a wide blank space, which broke the "Cur → Prop" layout on the cover.
   const cells = [
-    ['Cost / 1,000 gal (Cur to Prop)', `${fmt.c(report.curCP1K)} – ${fmt.c(report.propCP1K)}`],
-    ['Operating Ratio (Cur to Prop)', `${report.curOR.toFixed(2)} – ${report.propOR.toFixed(2)}`],
+    ['Cost / 1,000 gal (Cur to Prop)', `${fmt.cd(report.curCP1K, 'N/A')} – ${fmt.cd(report.propCP1K, 'N/A')}`],
+    ['Operating Ratio (Cur to Prop)', `${fmt.ratio(report.curOR, 'N/A')} – ${fmt.ratio(report.propOR, 'N/A')}`],
     ['5,000 gal Bill (Cur to Prop)', `${fmt.c(report.cost5kCur)} – ${fmt.c(report.cost5kProp)}`],
-    ['Affordability Index (Prop)', report.mhi ? fmt.p(report.propAI) : 'MHI not entered'],
+    ['Affordability Index (Prop)', report.mhi ? fmt.pd(report.propAI, 'N/A') : 'MHI not entered'],
   ];
   cells.forEach((c, i) => {
     const cx = MARGIN_L + 6 + (i % 2) * 90;
@@ -429,10 +429,33 @@ export async function exportPDF(report, filename) {
   pdfDoc.text('PROPOSED COST PER 1,000 GAL', MARGIN_L + 99, y + 6);
   pdfDoc.setFontSize(18);
   pdfDoc.setTextColor(90, 148, 0);
-  pdfDoc.text(fmt.c(report.propCP1K), MARGIN_L + 99, y + 16);
+  pdfDoc.text(fmt.cd(report.propCP1K, 'N/A'), MARGIN_L + 99, y + 16);
   y += 30;
 
-  // 5-year outlook table
+  // True cost of service
+  y = ensureSpace(pdfDoc, report, sealDataUrl, y, 60);
+  y = H2(pdfDoc, 'True Cost of Service', y);
+  y = P(pdfDoc,
+    'What 1,000 gallons costs the system to produce and deliver versus what 1,000 gallons earns in rate revenue. When cost exceeds revenue, rates are being subsidized by reserves.',
+    y, { size: 9, color: MID });
+  y += 2;
+  const bePct = (v) => v == null ? 'N/A' : (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+  autoTable(pdfDoc, tableBase(report, sealDataUrl, {
+    startY: y,
+    head: [['', 'Current Rates', 'Proposed Rates']],
+    body: [
+      ['Annual operating expenses', fmt.c(report.tcsCur.annualExpenses), fmt.c(report.tcsProp.annualExpenses)],
+      ['Annual gallons sold', report.tcsCur.annualGallons.toLocaleString(), report.tcsProp.annualGallons.toLocaleString()],
+      ['True cost per 1,000 gallons', fmt.cd(report.tcsCur.costPer1k, 'N/A'), fmt.cd(report.tcsProp.costPer1k, 'N/A')],
+      ['Average revenue per 1,000 gallons', fmt.cd(report.tcsCur.revenuePer1k, 'N/A'), fmt.cd(report.tcsProp.revenuePer1k, 'N/A')],
+      ['Adjustment needed to break even', bePct(report.tcsCur.breakEvenAdjustment), bePct(report.tcsProp.breakEvenAdjustment)],
+    ],
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+  }));
+  y = pdfDoc.lastAutoTable.finalY + 8;
+
+  // 5-year outlook table — the fund-balance row follows the forecast expense
+  // row; 3% / 5% rows are sensitivity comparisons only.
   y = ensureSpace(pdfDoc, report, sealDataUrl, y, 50);
   y = H2(pdfDoc, 'Five-Year Outlook', y);
   autoTable(pdfDoc, tableBase(report, sealDataUrl, {
@@ -440,9 +463,10 @@ export async function exportPDF(report, filename) {
     head: [['Scenario', ...report.fiveYearOutlook.map(r => r.yr)]],
     body: [
       ['Annual Revenue (Proposed)', ...report.fiveYearOutlook.map(r => fmt.c(r.revenue))],
-      ['Annual Expenses (3% inflation)', ...report.fiveYearOutlook.map(r => fmt.c(r.exp3))],
-      ['Annual Expenses (5% inflation)', ...report.fiveYearOutlook.map(r => fmt.c(r.exp5))],
-      ['Fund Balance (Proposed)', ...report.fiveYearOutlook.map(r => fmt.c(r.fundBalance))],
+      [`Projected Expenses (${report.fcInflation}% forecast)`, ...report.fiveYearOutlook.map(r => fmt.c(r.exp))],
+      ['Sensitivity: 3% inflation', ...report.fiveYearOutlook.map(r => fmt.c(r.exp3))],
+      ['Sensitivity: 5% inflation', ...report.fiveYearOutlook.map(r => fmt.c(r.exp5))],
+      [`Fund Balance (Proposed, ${report.fcInflation}%)`, ...report.fiveYearOutlook.map(r => fmt.c(r.fundBalance))],
     ],
     styles: { font: FONT, fontSize: 8.5, cellPadding: 2, overflow: 'linebreak' },
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 }, 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
@@ -450,34 +474,30 @@ export async function exportPDF(report, filename) {
   y = pdfDoc.lastAutoTable.finalY + 5;
   y = ensureSpace(pdfDoc, report, sealDataUrl, y, 12);
   y = P(pdfDoc,
-    'The 3% scenario is a conservative adjustment aligning with typical inflation. The 5% scenario accounts for rising costs in utilities, materials, and labor, and is recommended for planning purposes.',
+    `The fund balance follows the ${report.fcInflation}% forecast expense row (including any scheduled debt service and known one-time items). The 3% sensitivity aligns with typical inflation; the 5% sensitivity accounts for rising costs in utilities, materials, and labor.`,
     y, { size: 8, color: DIM });
 
   // ---- Charts page ----
-  if (fundChart || revExpChart || breakdownChart) {
+  {
     pdfDoc.addPage();
     drawHeader(pdfDoc, report, sealDataUrl);
     y = CONTENT_TOP;
     y = H1(pdfDoc, 'Projection Charts', y);
 
-    if (fundChart) {
-      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 95);
-      y = H2(pdfDoc, 'Fund Balance Over Five Years', y);
-      pdfDoc.addImage(fundChart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, 80);
-      y += 86;
-    }
-    if (revExpChart) {
-      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 85);
-      y = H2(pdfDoc, 'Revenue vs. Expenses', y);
-      pdfDoc.addImage(revExpChart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, 70);
-      y += 76;
-    }
-    if (breakdownChart) {
-      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 85);
-      y = H2(pdfDoc, 'Expense Breakdown by Category', y);
-      pdfDoc.addImage(breakdownChart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, 70);
-      y += 76;
-    }
+    const chartSlot = (title, chart, height) => {
+      y = ensureSpace(pdfDoc, report, sealDataUrl, y, height + 15);
+      y = H2(pdfDoc, title, y);
+      if (chart) {
+        pdfDoc.addImage(chart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, height);
+        y += height + 6;
+      } else {
+        y = P(pdfDoc, 'Chart unavailable — it could not be rendered during export. The underlying figures appear in the tables of this report.', y, { size: 9, color: DIM });
+        y += 6;
+      }
+    };
+    chartSlot('Fund Balance Over Five Years', fundChart, 80);
+    chartSlot('Revenue vs. Expenses', revExpChart, 70);
+    if (report.expCats.length > 0) chartSlot('Expense Breakdown by Category', breakdownChart, 70);
   }
 
   // ---- Operating Ratio + Affordability + DTI ----
@@ -494,7 +514,8 @@ export async function exportPDF(report, filename) {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
     body: [
-      ['Operating Ratio', report.curOR.toFixed(2), report.propOR.toFixed(2), report.propOR >= 1.25 ? 'Healthy' : report.propOR >= 1 ? 'Break-even' : 'Below target'],
+      ['Operating Ratio', fmt.ratio(report.curOR, 'N/A'), fmt.ratio(report.propOR, 'N/A'),
+        report.propOR == null ? 'Insufficient data' : report.propOR >= 1.25 ? 'Healthy' : report.propOR >= 1 ? 'Break-even' : 'Below target'],
     ],
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
   }));
@@ -502,15 +523,19 @@ export async function exportPDF(report, filename) {
 
   y = ensureSpace(pdfDoc, report, sealDataUrl, y, 50);
   y = H2(pdfDoc, 'Affordability Index', y);
-  y = P(pdfDoc, 'The Affordability Index measures household water cost as a share of monthly income (Cost of 5,000 gal ÷ Monthly MHI). USDA Rural Development considers utilities grant-eligible if the index exceeds 1.50%; below 2.00% is considered affordable by EPA standards.', y, { color: MID });
+  y = P(pdfDoc, 'The Affordability Index measures household water cost as a share of monthly income (Cost of 5,000 gal ÷ Monthly MHI). USDA Rural Development considers utilities grant-eligible when the index exceeds 1.50% — a higher burden supports the grant case. Below 2.00% is considered affordable by EPA standards.', y, { color: MID });
   y += 2;
   if (report.mhi > 0) {
+    const aiNote = (v) => v == null ? 'N/A'
+      : v < 0.015 ? 'Highly affordable — below USDA RD grant threshold'
+      : v < 0.02 ? 'Affordable; supports USDA RD grant case'
+      : 'Affordability concern — strengthens grant case';
     autoTable(pdfDoc, tableBase(report, sealDataUrl, {
       startY: y,
       head: [['', 'Current', 'Proposed', 'Note']],
       body: [
         ['5,000 gal Bill', fmt.c(report.cost5kCur), fmt.c(report.cost5kProp), `Monthly MHI: ${fmt.c(report.mhi)}`],
-        ['Affordability Index', fmt.p(report.curAI), fmt.p(report.propAI), report.propAI < 0.015 ? 'USDA RD eligible' : report.propAI < 0.02 ? 'Affordable' : 'Affordability concern'],
+        ['Affordability Index', fmt.pd(report.curAI, 'N/A'), fmt.pd(report.propAI, 'N/A'), aiNote(report.propAI)],
       ],
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     }));
@@ -521,13 +546,18 @@ export async function exportPDF(report, filename) {
   }
 
   y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
-  y = H2(pdfDoc, 'Debt to Income Ratio', y);
-  y = P(pdfDoc, "The Debt-to-Income Ratio shows the percentage of income used for debt payments. A ratio under 45% is generally considered manageable.", y, { color: MID });
+  y = H2(pdfDoc, 'Debt Service Coverage & Debt to Income', y);
+  y = P(pdfDoc, 'DSCR — net revenue after operating expenses divided by annual debt payments — is the covenant metric USDA RD and OWRB lenders typically require at 1.10–1.25 or better. The Debt-to-Income Ratio shows the percentage of revenue used for debt payments; under 45% is generally considered manageable.', y, { color: MID });
   y += 2;
   autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
-    body: [['DTI', fmt.p(report.curDTI), fmt.p(report.propDTI), report.propDTI < 0.45 ? 'Manageable' : 'High']],
+    body: [
+      ['Debt Service Coverage (DSCR)', fmt.ratio(report.curDSCR, 'No debt'), fmt.ratio(report.propDSCR, 'No debt'),
+        report.propDSCR == null ? 'No debt in budget' : report.propDSCR >= 1.25 ? 'Meets covenant' : report.propDSCR >= 1.1 ? 'Thin margin' : 'Below covenant'],
+      ['Debt-to-Income (DTI)', fmt.pd(report.curDTI, 'N/A'), fmt.pd(report.propDTI, 'N/A'),
+        report.propDTI == null ? 'Insufficient data' : report.propDTI < 0.45 ? 'Manageable' : 'High'],
+    ],
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
   }));
   y = pdfDoc.lastAutoTable.finalY + 8;
@@ -630,10 +660,20 @@ export async function exportPDF(report, filename) {
     y = renderMarkdownPDF(pdfDoc, report, sealDataUrl, parseMarkdown(report.aiAnalysis), y);
   }
 
-  // ---- Final recommendations + notes ----
+  // ---- Data quality + Final recommendations + notes ----
   pdfDoc.addPage();
   drawHeader(pdfDoc, report, sealDataUrl);
   y = CONTENT_TOP;
+  y = H1(pdfDoc, 'Data Quality & Limitations', y);
+  y = P(pdfDoc, report.dataQualityStatement, y, { color: MID });
+  y += 3;
+  y = P(pdfDoc,
+    report.anyDist
+      ? 'Revenue basis: customer usage distribution — revenue is billed bracket-by-bracket against the tier structure.'
+      : 'Revenue basis: class averages — every customer is assumed to use the class average, which understates revenue for tiered rates. Entering a customer usage distribution in the tool improves accuracy.',
+    y, { size: 9, color: DIM });
+  y += 8;
+
   y = H1(pdfDoc, 'Final Recommendations', y);
   y = P(pdfDoc,
     'The Choctaw Nation recommends that each system conduct a rate analysis and adjust rates as needed to ensure financial sustainability, proper infrastructure funding, and continued service to tribal members.',

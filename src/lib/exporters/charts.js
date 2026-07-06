@@ -82,7 +82,8 @@ export async function renderRevExpChart(proj) {
       datasets: [
         { label: 'Revenue (Proposed)', data: proj.propRevArr, backgroundColor: '#76B900', borderRadius: 4, borderWidth: 0 },
         { label: 'Revenue (Current)', data: proj.curRevArr, backgroundColor: '#94a3b8', borderRadius: 4, borderWidth: 0 },
-        { label: 'Expenses', data: proj.expArr, backgroundColor: '#1E3D3B', borderRadius: 4, borderWidth: 0, type: 'line', borderColor: '#1E3D3B', tension: .3, pointRadius: 5, fill: false },
+        { label: 'Expenses (Proposed Budget)', data: proj.propExpArr || proj.expArr, backgroundColor: '#1E3D3B', borderRadius: 4, borderWidth: 0, type: 'line', borderColor: '#1E3D3B', tension: .3, pointRadius: 5, fill: false },
+        { label: 'Expenses (Current Budget)', data: proj.curExpArr || proj.expArr, backgroundColor: '#64748b', borderRadius: 4, borderWidth: 0, type: 'line', borderColor: '#64748b', borderDash: [6, 3], tension: .3, pointRadius: 4, fill: false },
       ],
     },
     options: {
