@@ -7,6 +7,11 @@ export const defaultTiers = () => [
 
 export const mkClass = (id, name, enabled = false) => ({
   id, name, enabled,
+  // Optional customer usage distribution: how many customers fall at each
+  // monthly-usage level. Shared by the Current and Proposed sides (usage is a
+  // property of the customers, not the rates). When present, revenue is
+  // computed bracket-by-bracket instead of from the class average.
+  usage: [],
   cur: { customers: '', minCharge: '', tiers: defaultTiers() },
   prop: { customers: '', minCharge: '', tiers: defaultTiers() }
 });
@@ -54,9 +59,18 @@ const normalizeSide = (side = {}) => ({
   gallonsSold: side.gallonsSold ?? '',
   minCharge: side.minCharge ?? '',
   tiers: Array.isArray(side.tiers) && side.tiers.length > 0
-    ? side.tiers.map((t, i) => ({ gal: t?.gal ?? 1000 * (i + 1), rate: t?.rate ?? '' }))
+    ? side.tiers.map((t, i) => ({ gal: t?.gal ?? 1000 * (i + 1), rate: t?.rate ?? '', ...(t?.label ? { label: t.label } : {}) }))
     : defaultTiers(),
 });
+
+const normalizeUsage = (usage) =>
+  Array.isArray(usage)
+    ? usage.filter(b => b && typeof b === 'object').map(b => ({
+      customers: b.customers ?? '',
+      gallons: b.gallons ?? '',
+      note: b.note ?? '',
+    }))
+    : [];
 
 const normalizeBudget = (budget = {}) => {
   const base = defBudget();
@@ -96,6 +110,7 @@ const normalizeClasses = (classes) => {
       id: c.id || def.id,
       name: c.name ?? def.name,
       enabled: Boolean(c.enabled ?? def.enabled),
+      usage: normalizeUsage(c.usage),
       cur: normalizeSide(c.cur || def.cur),
       prop: normalizeSide(c.prop || def.prop),
     };
@@ -105,6 +120,7 @@ const normalizeClasses = (classes) => {
     merged.push({
       ...mkClass(c.id, c.name || c.id, Boolean(c.enabled)),
       ...c,
+      usage: normalizeUsage(c.usage),
       cur: normalizeSide(c.cur),
       prop: normalizeSide(c.prop),
     });
