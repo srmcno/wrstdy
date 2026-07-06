@@ -51,7 +51,9 @@ export default function App() {
 
   // Spawn a new study pre-populated from a known PWS record (clicked on the
   // map). Saves the user from re-typing the system name, county, water source,
-  // and coordinates — they only need to fill in financial data.
+  // and coordinates — they only need to fill in financial data. The record is
+  // flagged unverified: map/source data (especially supplier relationships)
+  // can be stale or wrong, so Step 1 shows a review banner until staff confirm.
   const createFromKnown = (k) => {
     const s = newStudy(`${k.name} — Rate Study ${new Date().getFullYear()}`);
     s.systemInfo.systemName = k.name;
@@ -63,7 +65,10 @@ export default function App() {
     if (k.sourceType) s.systemInfo.sourceType = k.sourceType;
     if (k.systemType) s.systemInfo.systemType = k.systemType;
     if (k.populationServed) s.systemInfo.populationServed = String(k.populationServed);
+    s.systemInfo.importedFromMap = true;
+    s.systemInfo.importVerified = false;
     create(s);
+    pushToast('Pre-filled from map data — verify the system details (PWS ID, population, supplier/source) in Step 1 before relying on them.', { kind: 'warn', duration: 8000 });
   };
   // Update accepts EITHER (id, patch) or (study). The patch form merges
   // against the latest state — important for async work whose closures may
@@ -105,14 +110,19 @@ export default function App() {
   function importStudy(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const input = e.target;
     const r = new FileReader();
     r.onload = (ev) => {
       try {
         const d = JSON.parse(ev.target.result);
-        const arr = d.studies || (d.study ? [d.study] : null);
-        if (!arr) {
-          pushToast('Invalid study file — missing "study" or "studies" key.', { kind: 'err' });
+        const rawArr = Array.isArray(d.studies) ? d.studies : (d.study && typeof d.study === 'object' ? [d.study] : null);
+        const arr = rawArr?.filter(s => s && typeof s === 'object');
+        if (!arr || arr.length === 0) {
+          pushToast('Invalid study file — expected a "study" object or "studies" array exported from this tool.', { kind: 'err' });
           return;
+        }
+        if (d.version && String(d.version) > VER) {
+          pushToast(`This file was exported by a newer version (${d.version}) of the tool — fields it added may be dropped.`, { kind: 'warn', duration: 8000 });
         }
         const imp = arr.map(s => normalizeStudy({
           ...s,
@@ -123,10 +133,12 @@ export default function App() {
         setStudies(p => [...imp, ...p]);
         if (imp.length > 0) setActiveId(imp[0].id);
         pushToast(`Imported ${imp.length} stud${imp.length === 1 ? 'y' : 'ies'}`);
-        e.target.value = '';
       } catch (err) {
         console.error(err);
         pushToast('Could not parse file. Expected a JSON file exported from this tool.', { kind: 'err' });
+      } finally {
+        // Reset even on failure so re-selecting the same file fires onChange again.
+        input.value = '';
       }
     };
     r.readAsText(file);
@@ -149,7 +161,10 @@ export default function App() {
         />
         <main className="main">
           {active
-            ? <Workspace study={active} onUpdate={update} onDelete={del} />
+            /* key: reset the step tabs (and other per-study UI state) when
+               switching studies, so opening a different study doesn't land on
+               whatever step the previous one was showing. */
+            ? <Workspace key={active.id} study={active} onUpdate={update} onDelete={del} />
             : <Dashboard studies={studies} onSelect={setActiveId} onCreate={() => setShowNew(true)} onLoadSample={create} onCreateFromKnown={createFromKnown} />
           }
         </main>

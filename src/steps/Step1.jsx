@@ -125,6 +125,19 @@ State: Oklahoma`;
         <h2 style={{ fontSize: 15, color: 'var(--teal)', marginBottom: 3 }}>System Information</h2>
         <p style={{ color: 'var(--mid)', fontSize: 12 }}>Identifying details for this study and the public water system.</p>
       </div>
+      {si.importedFromMap && !si.importVerified && (
+        <div className="al al-w" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>
+            <strong>Verify imported data.</strong>{' '}
+            This study was pre-filled from the public water system map. Map and source records can be stale or
+            wrong — double-check the PWS ID, population served, source type, and especially any supplier/wholesale
+            relationships before relying on them.
+          </span>
+          <button className="btn b-lime btn-sm" onClick={() => usiMany({ importVerified: true })}>
+            ✓ I've verified this info
+          </button>
+        </div>
+      )}
       <div className="card">
         <div className="sh">Study Details</div>
         <div className="g3">
@@ -215,10 +228,10 @@ State: Oklahoma`;
             <input className="inp" value={si.address || ''} onChange={(e) => usi('address', e.target.value)} placeholder="123 Main St, Antlers" />
           </F>
           <F label="Latitude" hint="Auto-filled by Geocode">
-            <input className="inp" type="number" step="0.0001" value={si.latitude ?? ''} onChange={(e) => usi('latitude', e.target.value === '' ? null : parseFloat(e.target.value))} placeholder="34.2317" />
+            <input className="inp" type="number" step="0.0001" value={si.latitude ?? ''} onChange={(e) => { const v = parseFloat(e.target.value); usi('latitude', Number.isFinite(v) ? v : null); }} placeholder="34.2317" />
           </F>
           <F label="Longitude" hint="Auto-filled by Geocode">
-            <input className="inp" type="number" step="0.0001" value={si.longitude ?? ''} onChange={(e) => usi('longitude', e.target.value === '' ? null : parseFloat(e.target.value))} placeholder="-95.6219" />
+            <input className="inp" type="number" step="0.0001" value={si.longitude ?? ''} onChange={(e) => { const v = parseFloat(e.target.value); usi('longitude', Number.isFinite(v) ? v : null); }} placeholder="-95.6219" />
           </F>
         </div>
         <div className="g3">
