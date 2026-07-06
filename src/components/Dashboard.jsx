@@ -6,7 +6,7 @@ import { statusMeta } from '../lib/status.js';
 
 export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateFromKnown }) {
   const [view, setView] = useState('list'); // 'list' | 'map'
-  const mappedCount = (studies || []).filter(s => Number.isFinite(s.systemInfo?.latitude)).length;
+  const mappedCount = (studies || []).filter(s => Number.isFinite(parseFloat(s.systemInfo?.latitude))).length;
 
   return (
     <div style={{ padding: '28px 28px 48px' }}>

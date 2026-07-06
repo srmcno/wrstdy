@@ -121,7 +121,17 @@ export default function App() {
           pushToast('Invalid study file — expected a "study" object or "studies" array exported from this tool.', { kind: 'err' });
           return;
         }
-        if (d.version && String(d.version) > VER) {
+        // Numeric semver comparison — string comparison mis-orders versions
+        // like "2.10.0" vs "2.2.0".
+        const isNewer = (a, b) => {
+          const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+          const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+          for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+            if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+          }
+          return false;
+        };
+        if (d.version && isNewer(d.version, VER)) {
           pushToast(`This file was exported by a newer version (${d.version}) of the tool — fields it added may be dropped.`, { kind: 'warn', duration: 8000 });
         }
         const imp = arr.map(s => normalizeStudy({

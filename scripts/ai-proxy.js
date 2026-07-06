@@ -255,12 +255,17 @@ function readBody(req, maxBytes) {
   });
 }
 
-// Fixed-window per-IP rate limiter — small systems, small numbers.
+// Fixed-window per-IP rate limiter — small systems, small numbers. Stale
+// windows are pruned whenever a new window opens so the map can't grow
+// unboundedly under scanning traffic.
 const rateWindows = new Map();
 export function checkRateLimit(ip, limitPerMin, now = Date.now()) {
   const windowStart = Math.floor(now / 60_000);
   const entry = rateWindows.get(ip);
   if (!entry || entry.windowStart !== windowStart) {
+    for (const [k, v] of rateWindows) {
+      if (v.windowStart !== windowStart) rateWindows.delete(k);
+    }
     rateWindows.set(ip, { windowStart, count: 1 });
     return true;
   }

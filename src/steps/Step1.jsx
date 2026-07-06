@@ -227,11 +227,15 @@ State: Oklahoma`;
           <F label="Address / City" hint="Used for the map">
             <input className="inp" value={si.address || ''} onChange={(e) => usi('address', e.target.value)} placeholder="123 Main St, Antlers" />
           </F>
+          {/* Store the raw string while typing — parsing on every keystroke
+              made it impossible to type "-" or a partial decimal (parseFloat
+              → NaN → state reset to null → input cleared). Consumers
+              (MapView, Dashboard) parse with parseFloat + Number.isFinite. */}
           <F label="Latitude" hint="Auto-filled by Geocode">
-            <input className="inp" type="number" step="0.0001" value={si.latitude ?? ''} onChange={(e) => { const v = parseFloat(e.target.value); usi('latitude', Number.isFinite(v) ? v : null); }} placeholder="34.2317" />
+            <input className="inp" type="number" step="0.0001" value={si.latitude ?? ''} onChange={(e) => usi('latitude', e.target.value === '' ? null : e.target.value)} placeholder="34.2317" />
           </F>
           <F label="Longitude" hint="Auto-filled by Geocode">
-            <input className="inp" type="number" step="0.0001" value={si.longitude ?? ''} onChange={(e) => { const v = parseFloat(e.target.value); usi('longitude', Number.isFinite(v) ? v : null); }} placeholder="-95.6219" />
+            <input className="inp" type="number" step="0.0001" value={si.longitude ?? ''} onChange={(e) => usi('longitude', e.target.value === '' ? null : e.target.value)} placeholder="-95.6219" />
           </F>
         </div>
         <div className="g3">
