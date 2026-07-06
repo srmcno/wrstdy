@@ -28,10 +28,10 @@ export const MODEL_LIGHT = 'light';
 export const DIRECT_MODELS = [
   { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 (most capable)', provider: 'anthropic' },
   { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 (balanced)', provider: 'anthropic' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (fast)', provider: 'anthropic' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (fast)', provider: 'anthropic' },
 ];
 const DIRECT_DEFAULT = 'claude-opus-4-8';
-const DIRECT_LIGHT = 'claude-haiku-4-5';
+const DIRECT_LIGHT = 'claude-haiku-4-5-20251001';
 
 export const safeGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 export const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };

@@ -7,7 +7,7 @@ import {
   affordabilityIndex, debtToIncome, debtServiceCoverage, trueCostOfService,
   hasUsageDistribution, nv, fmt
 } from '../lib/calc.js';
-import { buildReport, safeFileName } from '../lib/exporters/data.js';
+import { buildReport, safeFileName, revenueBasisText } from '../lib/exporters/data.js';
 import { statusMeta } from '../lib/status.js';
 import { pushToast } from '../components/Toasts.jsx';
 
@@ -31,14 +31,17 @@ export function Step8({ study, onField }) {
   const propCP1K = costPer1000(study.propBudget || defBudget(), classes, true);
   const tcsCur = trueCostOfService(study.curBudget || defBudget(), classes, false);
   const tcsProp = trueCostOfService(study.propBudget || defBudget(), classes, true);
-  const anyDist = classes.some(c => c.enabled && hasUsageDistribution(c));
+  const enabledClasses = classes.filter(c => c.enabled);
+  const distCount = enabledClasses.filter(c => hasUsageDistribution(c)).length;
+  const distBasis = distCount === 0 ? 'none' : distCount === enabledClasses.length ? 'all' : 'mixed';
   const curDepr = nv((study.curBudget || defBudget()).oth?.depreciation);
   const propDepr = nv((study.propBudget || defBudget()).oth?.depreciation);
   const curLR = nv((study.curBudget || defBudget()).oth?.longRange);
   const propLR = nv((study.propBudget || defBudget()).oth?.longRange);
   const proj = calc5Yr(classes, study.curBudget || defBudget(), study.propBudget || defBudget(), study.forecast || {});
   const expBase = propBT.total * 12;
-  const fcInflation = study.forecast?.inflationRate || '3';
+  const infRaw = study.forecast?.inflationRate;
+  const fcInflation = String(infRaw ?? '').trim() === '' ? '3' : String(infRaw);
 
   // Affordability status against the corrected USDA RD / EPA conventions:
   // a HIGHER index (more of household income going to water) is what supports
@@ -393,9 +396,7 @@ export function Step8({ study, onField }) {
           rate decisions.
         </p>
         <p style={{ fontSize: 11.5, color: 'var(--mid)', lineHeight: 1.65 }}>
-          Revenue basis for this study: {anyDist
-            ? 'customer usage distribution (billed bracket-by-bracket against the tier structure).'
-            : 'class averages — every customer is assumed to use the class average, which understates revenue for tiered rates. Entering a customer usage distribution in Step 2 improves accuracy.'}
+          Revenue basis for this study: {revenueBasisText(distBasis, 'Step 2')}
         </p>
       </div>
       <div className="card" style={{ borderLeft: '4px solid var(--lime)' }}>

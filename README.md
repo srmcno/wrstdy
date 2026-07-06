@@ -168,9 +168,10 @@ Key environment variables (see `.env.example` for the full list):
 | `OPENAI_API_KEY` | enable OpenAI models | — |
 | `ANTHROPIC_MODELS` | allowlist, `id=Label` csv | Opus 4.8 / Sonnet 5 / Haiku 4.5 |
 | `OPENAI_MODELS` | allowlist, `id=Label` csv | GPT-5.1 / GPT-5.1 mini |
-| `AI_DEFAULT_MODEL` | model when staff haven't picked | first Anthropic model |
+| `AI_DEFAULT_MODEL` | model when staff haven't picked | first configured model (Anthropic first when both providers are enabled) |
 | `AI_LIGHT_MODEL` | cheap model for quick suggestions | Haiku / mini |
 | `AI_AUTH_TOKEN` | shared access code for staff | off (set it!) |
+| `AI_TRUST_PROXY` | honor `X-Forwarded-For` for rate limiting — set only behind a trusted reverse proxy that overwrites it | off |
 | `AI_STATIC_DIR` | also serve the built app from the proxy | off |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoints (Azure, etc.) | api.openai.com |
 
@@ -193,6 +194,12 @@ docker run -p 8788:8788 \
   wrstdy
 # open http://your-host:8788
 ```
+
+> **Serve over TLS before exposing beyond localhost.** The proxy speaks plain
+> HTTP and the access code travels as a bearer token, so anything reachable
+> from other machines should sit behind a TLS-terminating reverse proxy or
+> load balancer (see "Operational recommendations" below). When you add one,
+> set `AI_TRUST_PROXY=true` so per-IP rate limiting uses the forwarded address.
 
 Without Docker, the same shape works on any box with Node:
 `npm run build && AI_STATIC_DIR=./dist ANTHROPIC_API_KEY=... node scripts/ai-proxy.js`.

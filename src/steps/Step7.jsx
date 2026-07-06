@@ -54,10 +54,16 @@ function buildContext(study) {
   const revCur = totalRevenue(classes, false);
   const revProp = totalRevenue(classes, true);
   const proj = calc5Yr(classes, curB, propB, study.forecast || {});
-  const target = nv(study.forecast?.targetFundBalance) || 5000;
+  const target = nv(study.forecast?.targetFundBalance || 5000);
   const tcsCur = trueCostOfService(curB, classes, false);
   const tcsProp = trueCostOfService(propB, classes, true);
-  const anyDist = classes.some(c => c.enabled && hasUsageDistribution(c));
+  const enabledClasses = classes.filter(c => c.enabled);
+  const distCount = enabledClasses.filter(c => hasUsageDistribution(c)).length;
+  const revenueBasis = distCount > 0 && distCount === enabledClasses.length
+    ? 'customer usage distribution for all enabled classes (billed bracket-by-bracket — dependable for tier changes)'
+    : distCount > 0
+      ? `MIXED — ${distCount} of ${enabledClasses.length} enabled classes have usage distributions; the remaining classes use class averages, which are approximate for tiered rates. Flag this as a data gap.`
+      : 'CLASS AVERAGES ONLY — no usage distribution entered; revenue is approximate and understates tiered-rate income. Flag this as a data gap.';
   const r2 = (v) => (v == null ? 'N/A' : v.toFixed(2));
   const debtSched = (study.forecast?.debtService || []).map(v => String(v ?? '').trim()).filter(Boolean);
   const knownRows = (study.forecast?.knownItems || []).filter(it => (it?.vals || []).some(v => nv(v) !== 0));
@@ -66,7 +72,7 @@ function buildContext(study) {
     `System: ${study.systemInfo?.systemName || '[unknown]'} — PWS ID ${study.systemInfo?.pwsId || 'N/A'} — ${study.systemInfo?.county || ''} County, OK — Study Year ${study.systemInfo?.studyYear || ''}`,
     `Population served: ${study.systemInfo?.populationServed || 'unknown'} — Source: ${study.systemInfo?.sourceType || 'unknown'} — System type: ${study.systemInfo?.systemType || 'unknown'}`,
     `Effective date for proposed rates: ${study.demographics?.effectiveDate || 'TBD'}`,
-    `Revenue basis: ${anyDist ? 'customer usage distribution (billed bracket-by-bracket — dependable for tier changes)' : 'CLASS AVERAGES ONLY — no usage distribution entered; revenue is approximate and understates tiered-rate income. Flag this as a data gap.'}`,
+    `Revenue basis: ${revenueBasis}`,
     ``,
     `BUDGET (monthly)`,
     `- Total expenses: Current ${fmt.c(curBT.total)}, Proposed ${fmt.c(propBT.total)}`,
@@ -126,6 +132,9 @@ export function Step7({ study, onField }) {
   const [modelChoice, setModelChoice] = useState(() => getSelectedModel());
   const [proxyConfig, setProxyConfig] = useState(() => getCachedAiConfig());
   const [configErr, setConfigErr] = useState('');
+  // A 401 from the config endpoint means the server wants an access code but
+  // proxyConfig stays empty — track it so the code field still shows.
+  const [needsAccessCode, setNeedsAccessCode] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const usingBuildKey = !USE_AI_PROXY && !safeGet(KEY_STORAGE) && !!BUILD_KEY;
   const [followUp, setFollowUp] = useState('');
@@ -138,8 +147,8 @@ export function Step7({ study, onField }) {
     if (!USE_AI_PROXY) return;
     let cancelled = false;
     fetchAiConfig()
-      .then(c => { if (!cancelled) { setProxyConfig(c); setConfigErr(''); } })
-      .catch(e => { if (!cancelled) setConfigErr(e.message || String(e)); });
+      .then(c => { if (!cancelled) { setProxyConfig(c); setConfigErr(''); setNeedsAccessCode(!!c?.authRequired); } })
+      .catch(e => { if (!cancelled) { setConfigErr(e.message || String(e)); setNeedsAccessCode(e.status === 401); } });
     return () => { cancelled = true; };
   }, []);
 
@@ -176,8 +185,8 @@ export function Step7({ study, onField }) {
     if (USE_AI_PROXY) {
       // Access code may have changed — re-check the server config.
       fetchAiConfig({ force: true })
-        .then(c => { if (mountedRef.current) { setProxyConfig(c); setConfigErr(''); } })
-        .catch(e => { if (mountedRef.current) setConfigErr(e.message || String(e)); });
+        .then(c => { if (mountedRef.current) { setProxyConfig(c); setConfigErr(''); setNeedsAccessCode(!!c?.authRequired); } })
+        .catch(e => { if (mountedRef.current) { setConfigErr(e.message || String(e)); setNeedsAccessCode(e.status === 401); } });
     }
   };
 
@@ -310,7 +319,7 @@ export function Step7({ study, onField }) {
                   </select>
                   <span className="fhn">Used for analyses and rate suggestions. Quick lookups use the server's fast model.</span>
                 </div>
-                {(proxyConfig?.authRequired || accessCode) && (
+                {(needsAccessCode || proxyConfig?.authRequired || accessCode) && (
                   <div className="fld">
                     <label className="flb">Access code</label>
                     <input className="inp" type="password" value={accessCode} onChange={(e) => setAccessCodeState(e.target.value)} placeholder="Provided by your administrator" />

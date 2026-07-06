@@ -8,6 +8,7 @@ import {
   ImageRun, Header, Footer, PageNumber, LevelFormat,
 } from 'docx';
 import { fmt } from '../calc.js';
+import { revenueBasisText } from './data.js';
 import { renderFundChart, renderRevExpChart, renderExpenseBreakdown } from './charts.js';
 import { parseMarkdown } from './markdown.js';
 
@@ -434,9 +435,7 @@ export async function exportDocx(report, filename, sealUint8) {
   children.push(H('Data Quality & Limitations'));
   children.push(P(report.dataQualityStatement, { color: MID }));
   children.push(P(
-    report.anyDist
-      ? 'Revenue basis: customer usage distribution — revenue is billed bracket-by-bracket against the tier structure.'
-      : 'Revenue basis: class averages — every customer is assumed to use the class average, which understates revenue for tiered rates. Entering a customer usage distribution in the tool improves accuracy.',
+    `Revenue basis: ${revenueBasisText(report.usageDistributionBasis)}`,
     { color: DIM, italic: true, size: 18 },
   ));
 

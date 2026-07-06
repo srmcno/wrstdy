@@ -26,6 +26,9 @@
 //   AI_AUTH_TOKEN            if set, clients must send Authorization: Bearer <token>
 //   AI_MAX_TOKENS_CAP        server-side max_tokens ceiling (default 8192)
 //   AI_RATE_LIMIT_PER_MIN    per-IP request limit (default 30)
+//   AI_TRUST_PROXY           set to 1/true only when behind a trusted reverse
+//                            proxy that overwrites X-Forwarded-For; otherwise
+//                            the socket address is used for rate limiting
 //   AI_MAX_BODY_BYTES        request body cap (default 1 MiB)
 //   AI_UPSTREAM_TIMEOUT_MS   upstream request timeout (default 120000)
 //   ANTHROPIC_BASE_URL       default https://api.anthropic.com
@@ -41,7 +44,7 @@ import { fileURLToPath } from 'node:url';
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const DEFAULT_ANTHROPIC_MODELS =
-  'claude-opus-4-8=Claude Opus 4.8 (most capable),claude-sonnet-5=Claude Sonnet 5 (balanced),claude-haiku-4-5=Claude Haiku 4.5 (fast)';
+  'claude-opus-4-8=Claude Opus 4.8 (most capable),claude-sonnet-5=Claude Sonnet 5 (balanced),claude-haiku-4-5-20251001=Claude Haiku 4.5 (fast)';
 const DEFAULT_OPENAI_MODELS =
   'gpt-5.1=GPT-5.1,gpt-5.1-mini=GPT-5.1 mini (fast)';
 
@@ -89,6 +92,7 @@ export function buildConfig(env = process.env) {
     rateLimitPerMin: Math.max(1, Number(env.AI_RATE_LIMIT_PER_MIN) || 30),
     maxBodyBytes: Math.max(16 * 1024, Number(env.AI_MAX_BODY_BYTES) || 1024 * 1024),
     upstreamTimeoutMs: Math.max(5000, Number(env.AI_UPSTREAM_TIMEOUT_MS) || 120000),
+    trustProxy: /^(1|true|yes)$/i.test((env.AI_TRUST_PROXY || '').trim()),
     staticDir: (env.AI_STATIC_DIR || '').trim(),
   };
 }
@@ -321,7 +325,11 @@ export function createServer(cfg) {
   }
   return http.createServer(async (req, res) => {
     const started = Date.now();
-    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+    // X-Forwarded-For is client-supplied; only honor it when the operator has
+    // said the proxy sits behind a trusted LB that overwrites it. Otherwise a
+    // caller could rotate the header to sidestep the per-IP rate limit.
+    const ip = (cfg.trustProxy && (req.headers['x-forwarded-for'] || '').split(',')[0].trim())
+      || req.socket.remoteAddress || 'unknown';
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const log = (status, extra = {}) => {
       // Never log prompt/response content — studies contain system finances.

@@ -17,6 +17,22 @@ export const DATA_QUALITY_STATEMENT =
   'from scanned or photographed reports — may affect the accuracy of revenue figures and projections. All ' +
   'projections should be reviewed against the system’s records before being used for final rate decisions.';
 
+// One sentence describing how revenue was computed, shared by the on-screen
+// report and the exports so a partially-entered distribution is never
+// presented as fully distribution-based. `where` names the place to enter a
+// distribution ("Step 2" on screen, "the tool" in exports).
+export function revenueBasisText(basis, where = 'the tool') {
+  if (basis === 'all') {
+    return 'customer usage distribution — revenue is billed bracket-by-bracket against the tier structure.';
+  }
+  if (basis === 'mixed') {
+    return 'mixed — customer usage distributions were used for the classes where they were entered; ' +
+      'class averages were used for the remaining classes, which understates revenue for tiered rates in those classes.';
+  }
+  return 'class averages — every customer is assumed to use the class average, which understates revenue ' +
+    `for tiered rates. Entering a customer usage distribution in ${where} improves accuracy.`;
+}
+
 export function buildReport(study) {
   const classes = study.classes || [];
   const mhi = nv(study.demographics?.medianMonthlyHHI);
@@ -27,7 +43,7 @@ export function buildReport(study) {
   const revCur = totalRevenue(classes, false);
   const revProp = totalRevenue(classes, true);
   const proj = calc5Yr(classes, curB, propB, study.forecast || {});
-  const target = nv(study.forecast?.targetFundBalance) || 5000;
+  const target = nv(study.forecast?.targetFundBalance || 5000);
 
   const curOR = operatingRatio(revCur.monthly, curBT.total);
   const propOR = operatingRatio(revProp.monthly, propBT.total);
@@ -39,7 +55,13 @@ export function buildReport(study) {
   const propDSCR = debtServiceCoverage(propB, revProp.monthly);
   const curBC = baseCoverage(classes, false, curBT.total);
   const propBC = baseCoverage(classes, true, propBT.total);
-  const anyDist = classes.some(c => c.enabled && hasUsageDistribution(c));
+  const enabledClasses = classes.filter(c => c.enabled);
+  const distCount = enabledClasses.filter(c => hasUsageDistribution(c)).length;
+  const anyDist = distCount > 0;
+  // 'none' | 'mixed' | 'all' — partial distributions must not be reported as
+  // fully distribution-based, or reports overstate the study's dependability.
+  const usageDistributionBasis =
+    distCount === 0 ? 'none' : distCount === enabledClasses.length ? 'all' : 'mixed';
 
   const scorecard = [
     { metric: 'Operating Ratio', cur: fmt.ratio(curOR, 'N/A'), prop: fmt.ratio(propOR, 'N/A'), benchmark: '≥ 1.25',
@@ -102,7 +124,8 @@ export function buildReport(study) {
   const scenarioNetMonthly = scenarioMonthlyRevenue - propBT.total;
 
   const expBaseAnnual = propBT.total * 12;
-  const fcInflation = String(study.forecast?.inflationRate || '3');
+  const infRaw = study.forecast?.inflationRate;
+  const fcInflation = String(infRaw ?? '').trim() === '' ? '3' : String(infRaw);
   const fiveYearOutlook = proj.yrs.map((yr, i) => ({
     yr,
     revenue: proj.propRevArr[i],
@@ -138,6 +161,7 @@ export function buildReport(study) {
     tcsCur: trueCostOfService(curB, classes, false),
     tcsProp: trueCostOfService(propB, classes, true),
     anyDist,
+    usageDistributionBasis,
     dataQualityStatement: DATA_QUALITY_STATEMENT,
     curCP1K: costPer1000(curB, classes, false),
     propCP1K: costPer1000(propB, classes, true),

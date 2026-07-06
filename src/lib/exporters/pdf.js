@@ -4,6 +4,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fmt } from '../calc.js';
+import { revenueBasisText } from './data.js';
 import { SEAL } from '../seal.js';
 import { renderFundChart, renderRevExpChart, renderExpenseBreakdown } from './charts.js';
 import { parseMarkdown } from './markdown.js';
@@ -419,7 +420,7 @@ export async function exportPDF(report, filename) {
   pdfDoc.text('CURRENT COST PER 1,000 GAL', MARGIN_L + 6, y + 6);
   pdfDoc.setFontSize(18);
   pdfDoc.setTextColor(...TEAL);
-  pdfDoc.text(fmt.c(report.curCP1K), MARGIN_L + 6, y + 16);
+  pdfDoc.text(fmt.cd(report.curCP1K, 'N/A'), MARGIN_L + 6, y + 16);
 
   pdfDoc.setFillColor(240, 249, 224);
   pdfDoc.setDrawColor(134, 239, 172);
@@ -667,10 +668,7 @@ export async function exportPDF(report, filename) {
   y = H1(pdfDoc, 'Data Quality & Limitations', y);
   y = P(pdfDoc, report.dataQualityStatement, y, { color: MID });
   y += 3;
-  y = P(pdfDoc,
-    report.anyDist
-      ? 'Revenue basis: customer usage distribution — revenue is billed bracket-by-bracket against the tier structure.'
-      : 'Revenue basis: class averages — every customer is assumed to use the class average, which understates revenue for tiered rates. Entering a customer usage distribution in the tool improves accuracy.',
+  y = P(pdfDoc, `Revenue basis: ${revenueBasisText(report.usageDistributionBasis)}`,
     y, { size: 9, color: DIM });
   y += 8;
 

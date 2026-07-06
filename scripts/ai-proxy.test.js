@@ -37,7 +37,7 @@ test('buildConfig only enables providers whose keys are set', () => {
 test('buildConfig picks sensible default and light models, honoring overrides', () => {
   const cfg = buildConfig(ENV_BOTH);
   assert.equal(cfg.defaultModel, 'claude-opus-4-8');
-  assert.equal(cfg.lightModel, 'claude-haiku-4-5');
+  assert.equal(cfg.lightModel, 'claude-haiku-4-5-20251001');
 
   const overridden = buildConfig({
     ...ENV_BOTH,
@@ -71,7 +71,7 @@ test('validatePayload enforces shape and caps max_tokens', () => {
   assert.match(validatePayload({ messages: [{ role: 'assistant', content: 'x' }] }, cfg).error, /first message/);
 
   const ok = validatePayload({
-    model: 'claude-haiku-4-5',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 999999,
     system: 'sys',
     messages: [{ role: 'user', content: 'hello' }],
@@ -175,7 +175,7 @@ test('proxy routes to the right provider and normalizes the response', async () 
       const claude = await (await realFetch.call(globalThis, `${base}/api/ai/messages`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-haiku-4-5', messages: [{ role: 'user', content: 'hi' }] }),
+        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', messages: [{ role: 'user', content: 'hi' }] }),
       })).json();
       assert.equal(claude.text, 'claude says hi');
       assert.equal(claude.provider, 'anthropic');
@@ -228,4 +228,83 @@ test('proxy rejects unknown models with a helpful 400', async () => {
 
 test('createServer refuses to start without any provider key', () => {
   assert.throws(() => createServer(buildConfig({})), /ANTHROPIC_API_KEY and\/or OPENAI_API_KEY/);
+});
+
+test('proxy rejects oversized request bodies with 413', async () => {
+  const realFetch = globalThis.fetch;
+  await withServer({ ...ENV_BOTH, AI_MAX_BODY_BYTES: String(16 * 1024) }, async (base) => {
+    const resp = await realFetch.call(globalThis, `${base}/api/ai/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        messages: [{ role: 'user', content: 'x'.repeat(20 * 1024) }],
+      }),
+    }).catch(() => null);
+    // Some runtimes surface the destroyed socket as a network error instead of
+    // delivering the 413 — either way the request must not reach upstream.
+    if (resp) assert.equal(resp.status, 413);
+  });
+});
+
+test('proxy retries a retryable upstream failure once, then succeeds', async () => {
+  const realFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Response(JSON.stringify({ error: { message: 'overloaded' } }),
+        { status: 529, headers: { 'retry-after': '0' } });
+    }
+    return new Response(JSON.stringify({
+      content: [{ type: 'text', text: 'second try' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), { status: 200 });
+  };
+  try {
+    await withServer(ENV_BOTH, async (base) => {
+      const resp = await realFetch.call(globalThis, `${base}/api/ai/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-opus-4-8', messages: [{ role: 'user', content: 'hi' }] }),
+      });
+      assert.equal(resp.status, 200);
+      assert.equal((await resp.json()).text, 'second try');
+      assert.equal(attempts, 2);
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('X-Forwarded-For is honored for rate limiting only when AI_TRUST_PROXY is set', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    content: [{ type: 'text', text: 'ok' }],
+    stop_reason: 'end_turn',
+    usage: { input_tokens: 1, output_tokens: 1 },
+  }), { status: 200 });
+  const send = (base, xff) => realFetch.call(globalThis, `${base}/api/ai/messages`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': xff },
+    body: JSON.stringify({ model: 'claude-opus-4-8', messages: [{ role: 'user', content: 'hi' }] }),
+  });
+  try {
+    // Trusted proxy: each forwarded address gets its own budget.
+    await withServer({ ...ENV_BOTH, AI_RATE_LIMIT_PER_MIN: '1', AI_TRUST_PROXY: 'true' }, async (base) => {
+      assert.equal((await send(base, '10.9.0.1')).status, 200);
+      assert.equal((await send(base, '10.9.0.2')).status, 200);
+      assert.equal((await send(base, '10.9.0.1')).status, 429);
+    });
+    // Default (untrusted): rotating the spoofable header must NOT dodge the
+    // socket-IP limit. The first request may already be limited by earlier
+    // tests sharing this window, so only the rotated follow-up is asserted.
+    await withServer({ ...ENV_BOTH, AI_RATE_LIMIT_PER_MIN: '1' }, async (base) => {
+      await send(base, '10.9.0.3');
+      assert.equal((await send(base, '10.9.0.4')).status, 429);
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

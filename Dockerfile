@@ -30,4 +30,6 @@ ENV AI_STATIC_DIR=/app/dist
 ENV AI_PROXY_PORT=8788
 EXPOSE 8788
 USER node
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
+  CMD node -e "fetch('http://localhost:'+(process.env.AI_PROXY_PORT||8788)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "scripts/ai-proxy.js"]

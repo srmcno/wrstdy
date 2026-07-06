@@ -37,7 +37,7 @@ export function Step4({ study }) {
   const proj = calc5Yr(classes, curB, propB, study.forecast || {});
   const curFY5 = proj.curFBArr[4] || 0;
   const propFY5 = proj.propFBArr[4] || 0;
-  const target = nv(study.forecast?.targetFundBalance) || 5000;
+  const target = nv(study.forecast?.targetFundBalance || 5000);
   const tcsCur = trueCostOfService(curB, classes, false);
   const tcsProp = trueCostOfService(propB, classes, true);
   const anyDist = classes.some(c => c.enabled && hasUsageDistribution(c));
