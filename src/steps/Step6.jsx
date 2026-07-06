@@ -9,15 +9,23 @@ export function Step6({ study, onField }) {
   const mhi = study.demographics?.medianMonthlyHHI;
   const propBT = budgetTotal(study.propBudget || defBudget());
   const defaultAdjustments = { res: 1, pas: 1, com: 1, who: 1, c5: 1, c6: 1, c7: 1 };
-  const [scenario, setScenario] = useState({
-    rateBasis: {},
-    adjustments: defaultAdjustments
+  // Initialize from the persisted scenario so the modeled scenario survives
+  // navigation and flows into the Final Report / PDF / DOCX exports (which
+  // read study.activeScenario via buildReport).
+  const [scenario, setScenario] = useState(() => {
+    const saved = scenarioForClasses(classes, study.activeScenario || {});
+    return { label: saved.label, rateBasis: saved.rateBasis, adjustments: saved.adjustments };
   });
+  const commit = (next) => {
+    setScenario(next);
+    onField('activeScenario', next);
+  };
   const [pendingPreset, setPendingPreset] = useState(null);
   const useProposedRates = (id) => (scenario.rateBasis[id] || 'proposed') === 'proposed';
   const rateBasisLabel = (id) => useProposedRates(id) ? 'Proposed rates' : 'Current rates';
   const multiplier = (id) => scenario.adjustments[id] || 1;
-  const applyScenario = (adjustments, basis = 'proposed') => setScenario({
+  const applyScenario = (adjustments, basis = 'proposed', label = 'Custom') => commit({
+    label,
     rateBasis: classes.reduce((acc, c) => ({ ...acc, [c.id]: basis }), {}),
     adjustments
   });
@@ -30,20 +38,21 @@ export function Step6({ study, onField }) {
       preset.action();
     }
   };
-  const adjust = (id, val) => setScenario(s => ({
-    ...s,
-    adjustments: { ...s.adjustments, [id]: nv(val) }
-  }));
+  const adjust = (id, val) => commit({
+    ...scenario,
+    label: 'Custom',
+    adjustments: { ...scenario.adjustments, [id]: nv(val) }
+  });
   const scenarioIncome = (c) => classMonthlyIncome(c, useProposedRates(c.id)).monthly * multiplier(c.id);
   const baseMonthly = totalRevenue(classes, true).monthly;
   const propRevAdj = classes.filter(c => c.enabled).reduce((s, c) => s + scenarioIncome(c), 0);
   const net = propRevAdj - propBT.total;
   const presets = [
-    { label: 'Shift to Residential', action: () => applyScenario({ res: 1.15, pas: 1, com: 0.95, who: 0.95, c5: 1, c6: 1, c7: 1 }), hint: '+15% res, −5% com/who' },
-    { label: 'Shift to Commercial', action: () => applyScenario({ res: 0.95, pas: 1, com: 1.20, who: 1.10, c5: 1, c6: 1, c7: 1 }), hint: '−5% res, +20% com' },
-    { label: 'Hold Current Rates', action: () => applyScenario(defaultAdjustments, 'current'), hint: 'Use current rates as basis' },
-    { label: 'High Burden', action: () => applyScenario({ res: 1.25, pas: 1.10, com: 1.15, who: 1.10, c5: 1, c6: 1, c7: 1 }), hint: '+25% res, +15% com' },
-    { label: 'Reset', action: () => applyScenario(defaultAdjustments), hint: 'Back to proposed (1.00× across)' }
+    { label: 'Shift to Residential', action: () => applyScenario({ res: 1.15, pas: 1, com: 0.95, who: 0.95, c5: 1, c6: 1, c7: 1 }, 'proposed', 'Shift to Residential'), hint: '+15% res, −5% com/who' },
+    { label: 'Shift to Commercial', action: () => applyScenario({ res: 0.95, pas: 1, com: 1.20, who: 1.10, c5: 1, c6: 1, c7: 1 }, 'proposed', 'Shift to Commercial'), hint: '−5% res, +20% com' },
+    { label: 'Hold Current Rates', action: () => applyScenario(defaultAdjustments, 'current', 'Hold Current Rates'), hint: 'Use current rates as basis' },
+    { label: 'High Burden', action: () => applyScenario({ res: 1.25, pas: 1.10, com: 1.15, who: 1.10, c5: 1, c6: 1, c7: 1 }, 'proposed', 'High Burden'), hint: '+25% res, +15% com' },
+    { label: 'Reset', action: () => applyScenario(defaultAdjustments, 'proposed', 'Proposed (baseline)'), hint: 'Back to proposed (1.00× across)' }
   ];
   return (
     <div className="stack">
@@ -115,7 +124,15 @@ export function Step6({ study, onField }) {
           <div className="al al-ok" style={{ marginTop: 12 }}>
             At current scenario, the system can build a <strong>{fmt.c(net * 12)}/year</strong> capital reserve.
             At 5 years, that yields <strong>{fmt.c(net * 12 * 5)}</strong> in the rainy day fund.
-            {mhi && ` Proposed rates remain at ${fmt.p(affordabilityIndex(classes, true, mhi))} of MHI (< 2.00% = affordable).`}
+            {(() => {
+              if (!mhi) return null;
+              // Affordability under THIS scenario: the residential 5,000-gal bill on
+              // the scenario's rate basis, scaled by the residential multiplier.
+              const baseAI = affordabilityIndex(classes, useProposedRates('res'), mhi);
+              if (baseAI == null) return null;
+              const scenAI = baseAI * multiplier('res');
+              return ` Under this scenario, residential rates sit at ${fmt.p(scenAI)} of MHI (${scenAI < 0.02 ? 'under' : 'over'} the 2.00% affordability benchmark${multiplier('res') !== 1 ? `, including the ${multiplier('res').toFixed(2)}× residential multiplier` : ''}).`;
+            })()}
           </div>
         )}
       </div>

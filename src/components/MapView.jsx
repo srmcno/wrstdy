@@ -151,9 +151,9 @@ export function MapView({ studies, onSelect, onCreateFromKnown }) {
       // User study markers
       const studyMarkers = [];
       (studies || []).forEach(s => {
-        const lat = s.systemInfo?.latitude;
-        const lng = s.systemInfo?.longitude;
-        if (lat == null || lng == null) return;
+        const lat = parseFloat(s.systemInfo?.latitude);
+        const lng = parseFloat(s.systemInfo?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
         const meta = statusMeta(s.status);
         const marker = L.marker([lat, lng], { icon: studyIcon(s.status) }).addTo(map);
         const popupHtml = `<div style="font-family:Gill Sans Nova,Gill Sans MT,sans-serif;min-width:180px">
@@ -281,9 +281,9 @@ function countStudiesInFeature(studies, feat) {
   if (!studies) return 0;
   let n = 0;
   for (const s of studies) {
-    const lat = s.systemInfo?.latitude;
-    const lng = s.systemInfo?.longitude;
-    if (lat == null || lng == null) continue;
+    const lat = parseFloat(s.systemInfo?.latitude);
+    const lng = parseFloat(s.systemInfo?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
     if (pointInFeature(lng, lat, feat)) n++;
   }
   return n;

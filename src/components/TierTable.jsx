@@ -18,6 +18,14 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
     onChange(t);
   };
   const hml = mhi ? calcHML({ prop: { minCharge, tiers } }, true, mhi) : null;
+  const sortedGals = tiers.map(t => nv(t.gal)).filter(g => g > 0);
+  const lastGal = sortedGals.length > 0 ? Math.max(...sortedGals) : 0;
+  const lastRate = (() => {
+    if (!lastGal) return 0;
+    const t = tiers.find(x => nv(x.gal) === lastGal);
+    return nv(t?.rate);
+  })();
+  const unsorted = tiers.some((t, i) => i > 0 && nv(t.gal) <= nv(tiers[i - 1].gal));
   return (
     <div>
       {hml && (
@@ -25,18 +33,21 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
           <div className="flb" style={{ marginBottom: 6 }}>Recommended Base Charge (% of Monthly MHI)</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn b-low btn-sm" onClick={() => onSetBase(hml.low.toFixed(2))}>
-              Low — {fmt.c(hml.low)} <span style={{ fontSize: 10 }}>(1.5% USDA RD)</span>
+              Low — {fmt.c(hml.low)} <span style={{ fontSize: 10 }}>(1.5% of MHI)</span>
             </button>
             <button className="btn b-med btn-sm" onClick={() => onSetBase(hml.med.toFixed(2))}>
-              Medium — {fmt.c(hml.med)} <span style={{ fontSize: 10 }}>(2.0% benchmark)</span>
+              Medium — {fmt.c(hml.med)} <span style={{ fontSize: 10 }}>(2.0% of MHI)</span>
             </button>
             <button className="btn b-hi btn-sm" onClick={() => onSetBase(hml.high.toFixed(2))}>
-              High — {fmt.c(hml.high)} <span style={{ fontSize: 10 }}>(2.5% EPA)</span>
+              High — {fmt.c(hml.high)} <span style={{ fontSize: 10 }}>(2.5% of MHI)</span>
             </button>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 5 }}>
+            Anchored to a 5,000-gal bill. USDA RD grant assistance generally targets systems whose water cost exceeds 1.5% of MHI; below 2.0% is considered affordable (EPA benchmark 2.5%).
           </div>
           {nv(minCharge) > 0 && nv(minCharge) <= hml.low + 0.01 && (
             <div className="al al-ok" style={{ marginTop: 8, fontSize: 11 }}>
-              Current base rate qualifies for USDA Rural Development loan/grant eligibility.
+              Bill at 5,000 gallons stays under 1.5% of MHI — comfortably affordable. Note: systems this affordable typically do <strong>not</strong> meet the USDA RD grant-eligibility test, which targets cost burdens above 1.5% of MHI.
             </div>
           )}
         </div>
@@ -44,7 +55,8 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
       <table className="tt">
         <thead>
           <tr>
-            <th>Block (gal)</th>
+            <th>Block up to (gal)</th>
+            <th>Block name <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional)</span></th>
             <th>Rate ($/1,000 gal)</th>
             <th style={{ color: 'var(--lime-dim)' }}>Cumulative Bill (auto)</th>
             <th style={{ width: 28 }}></th>
@@ -57,11 +69,22 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
                 <input
                   className="inp"
                   type="number"
-                  step="1000"
+                  min="0"
+                  step="500"
                   style={{ fontSize: 12, padding: '4px 8px' }}
                   value={t.gal}
                   onChange={(e) => updTier(i, 'gal', Number(e.target.value))}
                   placeholder="1000"
+                />
+              </td>
+              <td>
+                <input
+                  className="inp"
+                  type="text"
+                  style={{ fontSize: 11, padding: '4px 8px' }}
+                  value={t.label || ''}
+                  onChange={(e) => updTier(i, 'label', e.target.value)}
+                  placeholder={i === 0 ? 'e.g. Lifeline' : ''}
                 />
               </td>
               <td>
@@ -70,6 +93,7 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
                   <input
                     className="inp ci"
                     type="number"
+                    min="0"
                     step="0.01"
                     style={{ fontSize: 12, padding: '4px 8px 4px 18px' }}
                     value={t.rate}
@@ -90,13 +114,25 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
               </td>
               <td>
                 {tiers.length > 1 && (
-                  <button onClick={() => remTier(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                  <button onClick={() => remTier(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }} title="Remove this block">✕</button>
                 )}
               </td>
             </tr>
           ))}
+          {lastGal > 0 && (
+            <tr>
+              <td colSpan={5} style={{ fontSize: 11, color: 'var(--dim)', padding: '6px 8px', background: 'var(--surface)' }}>
+                {fmt.n(lastGal)}+ gal — all additional usage continues at the final block rate ({fmt.r(lastRate)}/1,000 gal). High-use customers (20,000–40,000+ gal) are billed in full; revenue is never capped at the last block.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
+      {unsorted && (
+        <div className="al al-w" style={{ marginTop: 8, fontSize: 11 }}>
+          Blocks are out of order — billing automatically sorts them by gallons, but consider reordering for readability.
+        </div>
+      )}
       <button className="btn b-out btn-xs" style={{ marginTop: 8 }} onClick={addTier}>+ Add Tier Block</button>
     </div>
   );

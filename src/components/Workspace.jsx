@@ -48,7 +48,9 @@ export function Workspace({ study, onUpdate, onDelete }) {
     const patch = typeof kOrPatch === 'string' ? { [kOrPatch]: v } : kOrPatch;
     const fullPatch = {
       ...patch,
-      status: patch.status ?? (study.status === 'draft' && step > 0 ? 'in-progress' : study.status),
+      // Any real edit moves a draft to in-progress — including Step 1, where
+      // most identifying data is entered.
+      status: patch.status ?? (study.status === 'draft' ? 'in-progress' : study.status),
     };
     onUpdate(study.id, fullPatch);
   };

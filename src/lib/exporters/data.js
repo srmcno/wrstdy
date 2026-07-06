@@ -4,10 +4,34 @@
 import { defBudget } from '../state.js';
 import { scenarioForClasses } from '../scenarios.js';
 import {
-  budgetTotal, totalRevenue, classMonthlyIncome,
-  affordabilityIndex, debtToIncome, baseCoverage, operatingRatio,
-  costPer1000, cost5000, calc5Yr, nv, fmt
+  budgetTotal, totalRevenue, classMonthlyIncome, classCustomers, hasUsageDistribution,
+  affordabilityIndex, debtToIncome, baseCoverage, operatingRatio, debtServiceCoverage,
+  costPer1000, cost5000, calc5Yr, trueCostOfService, nv, fmt
 } from '../calc.js';
+
+// Shared wording for the data-quality / liability statement that appears in
+// the on-screen report and every export format.
+export const DATA_QUALITY_STATEMENT =
+  'Results in this study are dependent on the quality, completeness, and accuracy of the data provided by the ' +
+  'water system. Missing, incomplete, estimated, or manually transcribed billing data — including data converted ' +
+  'from scanned or photographed reports — may affect the accuracy of revenue figures and projections. All ' +
+  'projections should be reviewed against the system’s records before being used for final rate decisions.';
+
+// One sentence describing how revenue was computed, shared by the on-screen
+// report and the exports so a partially-entered distribution is never
+// presented as fully distribution-based. `where` names the place to enter a
+// distribution ("Step 2" on screen, "the tool" in exports).
+export function revenueBasisText(basis, where = 'the tool') {
+  if (basis === 'all') {
+    return 'customer usage distribution — revenue is billed bracket-by-bracket against the tier structure.';
+  }
+  if (basis === 'mixed') {
+    return 'mixed — customer usage distributions were used for the classes where they were entered; ' +
+      'class averages were used for the remaining classes, which understates revenue for tiered rates in those classes.';
+  }
+  return 'class averages — every customer is assumed to use the class average, which understates revenue ' +
+    `for tiered rates. Entering a customer usage distribution in ${where} improves accuracy.`;
+}
 
 export function buildReport(study) {
   const classes = study.classes || [];
@@ -19,26 +43,37 @@ export function buildReport(study) {
   const revCur = totalRevenue(classes, false);
   const revProp = totalRevenue(classes, true);
   const proj = calc5Yr(classes, curB, propB, study.forecast || {});
-  const target = nv(study.forecast?.targetFundBalance) || 5000;
+  const target = nv(study.forecast?.targetFundBalance || 5000);
 
   const curOR = operatingRatio(revCur.monthly, curBT.total);
   const propOR = operatingRatio(revProp.monthly, propBT.total);
-  const curAI = mhi ? affordabilityIndex(classes, false, mhi) : null;
-  const propAI = mhi ? affordabilityIndex(classes, true, mhi) : null;
+  const curAI = affordabilityIndex(classes, false, mhi);
+  const propAI = affordabilityIndex(classes, true, mhi);
   const curDTI = debtToIncome(curB, revCur.monthly);
   const propDTI = debtToIncome(propB, revProp.monthly);
+  const curDSCR = debtServiceCoverage(curB, revCur.monthly);
+  const propDSCR = debtServiceCoverage(propB, revProp.monthly);
   const curBC = baseCoverage(classes, false, curBT.total);
   const propBC = baseCoverage(classes, true, propBT.total);
+  const enabledClasses = classes.filter(c => c.enabled);
+  const distCount = enabledClasses.filter(c => hasUsageDistribution(c)).length;
+  const anyDist = distCount > 0;
+  // 'none' | 'mixed' | 'all' — partial distributions must not be reported as
+  // fully distribution-based, or reports overstate the study's dependability.
+  const usageDistributionBasis =
+    distCount === 0 ? 'none' : distCount === enabledClasses.length ? 'all' : 'mixed';
 
   const scorecard = [
-    { metric: 'Operating Ratio', cur: curOR.toFixed(2), prop: propOR.toFixed(2), benchmark: '≥ 1.25',
-      curOk: curOR >= 1.25, propOk: propOR >= 1.25 },
-    { metric: 'Affordability Index', cur: mhi ? fmt.p(curAI) : 'N/A', prop: mhi ? fmt.p(propAI) : 'N/A', benchmark: '< 2.00%',
-      curOk: mhi ? curAI < 0.02 : null, propOk: mhi ? propAI < 0.02 : null },
-    { metric: 'Debt-to-Income Ratio', cur: fmt.p(curDTI), prop: fmt.p(propDTI), benchmark: '< 45%',
-      curOk: curDTI < 0.45, propOk: propDTI < 0.45 },
-    { metric: 'Base-Only Coverage', cur: fmt.p(curBC), prop: fmt.p(propBC), benchmark: '≥ 100%',
-      curOk: curBC >= 1.0, propOk: propBC >= 1.0 },
+    { metric: 'Operating Ratio', cur: fmt.ratio(curOR, 'N/A'), prop: fmt.ratio(propOR, 'N/A'), benchmark: '≥ 1.25',
+      curOk: curOR == null ? null : curOR >= 1.25, propOk: propOR == null ? null : propOR >= 1.25 },
+    { metric: 'Affordability Index', cur: fmt.pd(curAI, 'N/A'), prop: fmt.pd(propAI, 'N/A'), benchmark: '< 2.00%',
+      curOk: curAI == null ? null : curAI < 0.02, propOk: propAI == null ? null : propAI < 0.02 },
+    { metric: 'Debt Service Coverage (DSCR)', cur: fmt.ratio(curDSCR, 'No debt'), prop: fmt.ratio(propDSCR, 'No debt'), benchmark: '≥ 1.25',
+      curOk: curDSCR == null ? null : curDSCR >= 1.25, propOk: propDSCR == null ? null : propDSCR >= 1.25 },
+    { metric: 'Debt-to-Income Ratio', cur: fmt.pd(curDTI, 'N/A'), prop: fmt.pd(propDTI, 'N/A'), benchmark: '< 45%',
+      curOk: curDTI == null ? null : curDTI < 0.45, propOk: propDTI == null ? null : propDTI < 0.45 },
+    { metric: 'Base-Only Coverage', cur: fmt.pd(curBC, 'N/A'), prop: fmt.pd(propBC, 'N/A'), benchmark: '≥ 100%',
+      curOk: curBC == null ? null : curBC >= 1.0, propOk: propBC == null ? null : propBC >= 1.0 },
     { metric: 'FY5 Fund Balance vs. Target', cur: fmt.c(proj.curFBArr[4] || 0), prop: fmt.c(proj.propFBArr[4] || 0), benchmark: `≥ ${fmt.c(target)}`,
       curOk: (proj.curFBArr[4] || 0) >= target, propOk: (proj.propFBArr[4] || 0) >= target },
   ];
@@ -49,7 +84,8 @@ export function buildReport(study) {
     const chg = pi.monthly - ci.monthly;
     return {
       name: c.name || c.id,
-      customers: nv(c.cur.customers || c.prop.customers),
+      customers: classCustomers(c, false) || classCustomers(c, true),
+      usesDistribution: hasUsageDistribution(c),
       cur: ci.monthly,
       prop: pi.monthly,
       delta: chg,
@@ -88,9 +124,14 @@ export function buildReport(study) {
   const scenarioNetMonthly = scenarioMonthlyRevenue - propBT.total;
 
   const expBaseAnnual = propBT.total * 12;
+  const infRaw = study.forecast?.inflationRate;
+  const fcInflation = String(infRaw ?? '').trim() === '' ? '3' : String(infRaw);
   const fiveYearOutlook = proj.yrs.map((yr, i) => ({
     yr,
     revenue: proj.propRevArr[i],
+    // Projected expenses under the study's forecast assumptions — the row the
+    // fund balance actually follows. exp3/exp5 are sensitivity comparisons.
+    exp: proj.propExpArr[i],
     exp3: expBaseAnnual * Math.pow(1.03, i),
     exp5: expBaseAnnual * Math.pow(1.05, i),
     fundBalance: proj.propFBArr[i],
@@ -113,8 +154,15 @@ export function buildReport(study) {
     studyName: study.name,
     mhi,
     target,
+    fcInflation,
     curBT, propBT, revCur, revProp,
     curOR, propOR, curAI, propAI, curDTI, propDTI, curBC, propBC,
+    curDSCR, propDSCR,
+    tcsCur: trueCostOfService(curB, classes, false),
+    tcsProp: trueCostOfService(propB, classes, true),
+    anyDist,
+    usageDistributionBasis,
+    dataQualityStatement: DATA_QUALITY_STATEMENT,
     curCP1K: costPer1000(curB, classes, false),
     propCP1K: costPer1000(propB, classes, true),
     cost5kCur: cost5000(classes, false),

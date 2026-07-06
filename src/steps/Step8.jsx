@@ -3,10 +3,11 @@ import { defBudget } from '../lib/state.js';
 import { SEAL } from '../lib/seal.js';
 import { VER } from '../lib/constants.js';
 import {
-  budgetTotal, totalRevenue, costPer1000, calc5Yr,
-  affordabilityIndex, debtToIncome, nv, fmt
+  budgetTotal, totalRevenue, costPer1000, calc5Yr, operatingRatio,
+  affordabilityIndex, debtToIncome, debtServiceCoverage, trueCostOfService,
+  hasUsageDistribution, nv, fmt
 } from '../lib/calc.js';
-import { buildReport, safeFileName } from '../lib/exporters/data.js';
+import { buildReport, safeFileName, revenueBasisText } from '../lib/exporters/data.js';
 import { statusMeta } from '../lib/status.js';
 import { pushToast } from '../components/Toasts.jsx';
 
@@ -18,20 +19,39 @@ export function Step8({ study, onField }) {
   const propBT = budgetTotal(study.propBudget || defBudget());
   const revCur = totalRevenue(classes, false);
   const revProp = totalRevenue(classes, true);
-  const curOR = curBT.total > 0 ? revCur.monthly / curBT.total : 0;
-  const propOR = propBT.total > 0 ? revProp.monthly / propBT.total : 0;
-  const curAI = mhi ? affordabilityIndex(classes, false, mhi) : null;
-  const propAI = mhi ? affordabilityIndex(classes, true, mhi) : null;
+  const curOR = operatingRatio(revCur.monthly, curBT.total);
+  const propOR = operatingRatio(revProp.monthly, propBT.total);
+  const curAI = affordabilityIndex(classes, false, mhi);
+  const propAI = affordabilityIndex(classes, true, mhi);
   const curDTI = debtToIncome(study.curBudget || defBudget(), revCur.monthly);
   const propDTI = debtToIncome(study.propBudget || defBudget(), revProp.monthly);
+  const curDSCR = debtServiceCoverage(study.curBudget || defBudget(), revCur.monthly);
+  const propDSCR = debtServiceCoverage(study.propBudget || defBudget(), revProp.monthly);
   const curCP1K = costPer1000(study.curBudget || defBudget(), classes, false);
   const propCP1K = costPer1000(study.propBudget || defBudget(), classes, true);
+  const tcsCur = trueCostOfService(study.curBudget || defBudget(), classes, false);
+  const tcsProp = trueCostOfService(study.propBudget || defBudget(), classes, true);
+  const enabledClasses = classes.filter(c => c.enabled);
+  const distCount = enabledClasses.filter(c => hasUsageDistribution(c)).length;
+  const distBasis = distCount === 0 ? 'none' : distCount === enabledClasses.length ? 'all' : 'mixed';
   const curDepr = nv((study.curBudget || defBudget()).oth?.depreciation);
   const propDepr = nv((study.propBudget || defBudget()).oth?.depreciation);
   const curLR = nv((study.curBudget || defBudget()).oth?.longRange);
   const propLR = nv((study.propBudget || defBudget()).oth?.longRange);
   const proj = calc5Yr(classes, study.curBudget || defBudget(), study.propBudget || defBudget(), study.forecast || {});
   const expBase = propBT.total * 12;
+  const infRaw = study.forecast?.inflationRate;
+  const fcInflation = String(infRaw ?? '').trim() === '' ? '3' : String(infRaw);
+
+  // Affordability status against the corrected USDA RD / EPA conventions:
+  // a HIGHER index (more of household income going to water) is what supports
+  // USDA RD grant eligibility; a lower index is simply more affordable.
+  const aiLabel = (v) => {
+    if (v == null) return '';
+    if (v < 0.015) return 'Highly affordable — below the 1.5% USDA RD grant threshold';
+    if (v < 0.02) return 'Affordable (EPA); ≥ 1.5% supports a USDA RD grant case';
+    return 'Affordability concern — strengthens the case for grant assistance';
+  };
 
   const [busy, setBusy] = useState('');
   const [exportErr, setExportErr] = useState('');
@@ -184,20 +204,45 @@ export function Step8({ study, onField }) {
         <div className="g2">
           <div style={{ padding: 14, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Current Cost</div>
-            <div style={{ fontSize: 22, color: 'var(--teal)' }}>{fmt.c(curCP1K)}</div>
+            <div style={{ fontSize: 22, color: 'var(--teal)' }}>{fmt.cd(curCP1K, 'N/A')}</div>
             <div style={{ fontSize: 11, color: 'var(--mid)', marginTop: 2 }}>per 1,000 Gallons</div>
           </div>
           <div style={{ padding: 14, background: 'var(--lime-pale)', borderRadius: 7, border: '1px solid #86efac' }}>
             <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Proposed Cost</div>
-            <div style={{ fontSize: 22, color: 'var(--lime-dim)' }}>{fmt.c(propCP1K)}</div>
+            <div style={{ fontSize: 22, color: 'var(--lime-dim)' }}>{fmt.cd(propCP1K, 'N/A')}</div>
             <div style={{ fontSize: 11, color: 'var(--mid)', marginTop: 2 }}>per 1,000 Gallons</div>
           </div>
         </div>
       </div>
+      <div className="card" style={{ borderLeft: '4px solid var(--teal)' }}>
+        <div className="sh">True Cost of Service</div>
+        <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 12 }}>
+          The table below compares what 1,000 gallons costs the system to produce and deliver against what
+          1,000 gallons earns in rate revenue. When cost exceeds revenue, rates are subsidized by reserves —
+          the "adjustment to break even" row shows the across-the-board rate change needed to close that gap.
+        </p>
+        <table className="dt">
+          <thead>
+            <tr><th></th><th style={{ textAlign: 'right' }}>Current Rates</th><th style={{ textAlign: 'right' }}>Proposed Rates</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Annual operating expenses</td><td style={{ textAlign: 'right' }}>{fmt.c(tcsCur.annualExpenses)}</td><td style={{ textAlign: 'right' }}>{fmt.c(tcsProp.annualExpenses)}</td></tr>
+            <tr><td>Annual gallons sold</td><td style={{ textAlign: 'right' }}>{fmt.n(tcsCur.annualGallons)}</td><td style={{ textAlign: 'right' }}>{fmt.n(tcsProp.annualGallons)}</td></tr>
+            <tr><td>True cost per 1,000 gallons</td><td style={{ textAlign: 'right' }}>{fmt.cd(tcsCur.costPer1k, 'N/A')}</td><td style={{ textAlign: 'right' }}>{fmt.cd(tcsProp.costPer1k, 'N/A')}</td></tr>
+            <tr><td>Average revenue per 1,000 gallons</td><td style={{ textAlign: 'right' }}>{fmt.cd(tcsCur.revenuePer1k, 'N/A')}</td><td style={{ textAlign: 'right' }}>{fmt.cd(tcsProp.revenuePer1k, 'N/A')}</td></tr>
+            <tr className="tr-t">
+              <td>Adjustment needed to break even</td>
+              <td style={{ textAlign: 'right' }}>{tcsCur.breakEvenAdjustment == null ? 'N/A' : (tcsCur.breakEvenAdjustment > 0 ? '+' : '') + (tcsCur.breakEvenAdjustment * 100).toFixed(1) + '%'}</td>
+              <td style={{ textAlign: 'right' }}>{tcsProp.breakEvenAdjustment == null ? 'N/A' : (tcsProp.breakEvenAdjustment > 0 ? '+' : '') + (tcsProp.breakEvenAdjustment * 100).toFixed(1) + '%'}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <div className="card">
         <div className="sh">Five Year Outlook</div>
         <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 12 }}>
-          To help your operators, board, and stakeholders anticipate how future inflation may affect system costs, the following table projects annual expense requirements over five years at 3% and 5% inflation scenarios.
+          Projected revenue, expenses, and fund balance under the proposed rates using the study's forecast
+          assumptions ({fcInflation}% inflation), with 3% and 5% inflation shown as sensitivity comparisons.
         </p>
         <table className="dt">
           <thead>
@@ -205,12 +250,13 @@ export function Step8({ study, onField }) {
           </thead>
           <tbody>
             <tr><td>Annual Revenue (Proposed Rates)</td>{proj.propRevArr.map((v, i) => <td key={i} style={{ textAlign: 'right' }}>{fmt.c(v)}</td>)}</tr>
-            <tr><td>Annual Expenses (3% inflation)</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right' }}>{fmt.c(expBase * Math.pow(1.03, i))}</td>)}</tr>
-            <tr><td>Annual Expenses (5% inflation)</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right' }}>{fmt.c(expBase * Math.pow(1.05, i))}</td>)}</tr>
+            <tr><td>Projected Annual Expenses ({fcInflation}% forecast)</td>{proj.propExpArr.map((v, i) => <td key={i} style={{ textAlign: 'right' }}>{fmt.c(v)}</td>)}</tr>
+            <tr><td style={{ color: 'var(--dim)' }}>Sensitivity: expenses at 3% inflation</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--dim)' }}>{fmt.c(expBase * Math.pow(1.03, i))}</td>)}</tr>
+            <tr><td style={{ color: 'var(--dim)' }}>Sensitivity: expenses at 5% inflation</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--dim)' }}>{fmt.c(expBase * Math.pow(1.05, i))}</td>)}</tr>
           </tbody>
           <tfoot>
             <tr className="tr-t">
-              <td>Fund Balance (Proposed)</td>
+              <td>Fund Balance (Proposed, {fcInflation}% forecast)</td>
               {proj.propFBArr.map((v, i) => (
                 <td key={i} style={{ textAlign: 'right', color: v >= nv(study.forecast?.targetFundBalance || 5000) ? '#a8e060' : '#fca5a5' }}>
                   {fmt.c(v)}
@@ -220,7 +266,9 @@ export function Step8({ study, onField }) {
           </tfoot>
         </table>
         <div style={{ fontSize: 11, color: 'var(--mid)', marginTop: 8 }}>
-          The 3% scenario represents a conservative adjustment aligning with typical inflation. The 5% scenario accounts for rising costs in utilities, materials, and labor, and is recommended for planning purposes.
+          The fund balance row follows the {fcInflation}% forecast expense row above it (plus any scheduled debt
+          service and known one-time items from Step 5). The 3% sensitivity represents typical inflation; the 5%
+          sensitivity accounts for rising costs in utilities, materials, and labor.
         </div>
       </div>
       <div className="card">
@@ -251,16 +299,16 @@ export function Step8({ study, onField }) {
         <div className="g2">
           <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Current Operating Ratio</div>
-            <div style={{ fontSize: 24, color: curOR >= 1.25 ? 'var(--lime-dim)' : curOR >= 1 ? 'var(--amber)' : 'var(--red)' }}>{curOR.toFixed(2)}</div>
+            <div style={{ fontSize: 24, color: curOR == null ? 'var(--dim)' : curOR >= 1.25 ? 'var(--lime-dim)' : curOR >= 1 ? 'var(--amber)' : 'var(--red)' }}>{fmt.ratio(curOR, 'N/A')}</div>
             <div style={{ fontSize: 11, color: 'var(--mid)', marginTop: 2 }}>
-              {curOR >= 1.25 ? 'Healthy (≥ 1.25)' : curOR >= 1.0 ? 'At break-even' : 'Below break-even'}
+              {curOR == null ? 'Enter budget expenses to calculate' : curOR >= 1.25 ? 'Healthy (≥ 1.25)' : curOR >= 1.0 ? 'At break-even' : 'Below break-even'}
             </div>
           </div>
           <div style={{ padding: 12, background: 'var(--lime-pale)', borderRadius: 7, border: '1px solid #86efac' }}>
             <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Proposed Operating Ratio</div>
-            <div style={{ fontSize: 24, color: propOR >= 1.25 ? 'var(--lime-dim)' : propOR >= 1 ? 'var(--amber)' : 'var(--red)' }}>{propOR.toFixed(2)}</div>
+            <div style={{ fontSize: 24, color: propOR == null ? 'var(--dim)' : propOR >= 1.25 ? 'var(--lime-dim)' : propOR >= 1 ? 'var(--amber)' : 'var(--red)' }}>{fmt.ratio(propOR, 'N/A')}</div>
             <div style={{ fontSize: 11, color: 'var(--mid)', marginTop: 2 }}>
-              {propOR >= 1.25 ? 'Healthy (≥ 1.25)' : propOR >= 1.0 ? 'At break-even' : 'Below break-even'}
+              {propOR == null ? 'Enter budget expenses to calculate' : propOR >= 1.25 ? 'Healthy (≥ 1.25)' : propOR >= 1.0 ? 'At break-even' : 'Below break-even'}
             </div>
           </div>
         </div>
@@ -273,7 +321,7 @@ export function Step8({ study, onField }) {
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 12 }}>
           USDA Rural Development indicates that utilities are grant eligible if the Affordability Index exceeds 1.50%. An index below 2.00% is considered affordable by EPA standards.
         </p>
-        {mhi ? (
+        {curAI != null && propAI != null ? (
           <div className="g3">
             <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
               <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Monthly MHI</div>
@@ -282,16 +330,12 @@ export function Step8({ study, onField }) {
             <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
               <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Affordability — Current</div>
               <div style={{ fontSize: 20, color: curAI < 0.02 ? 'var(--lime-dim)' : 'var(--red)' }}>{(curAI * 100).toFixed(2)}%</div>
-              <div style={{ fontSize: 10, color: 'var(--mid)', marginTop: 2 }}>
-                {curAI < 0.015 ? 'Below 1.5% — USDA RD eligible' : curAI < 0.02 ? 'Affordable' : 'Affordability concern'}
-              </div>
+              <div style={{ fontSize: 10, color: 'var(--mid)', marginTop: 2 }}>{aiLabel(curAI)}</div>
             </div>
             <div style={{ padding: 12, background: 'var(--lime-pale)', borderRadius: 7, border: '1px solid #86efac' }}>
               <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Affordability — Proposed</div>
               <div style={{ fontSize: 20, color: propAI < 0.02 ? 'var(--lime-dim)' : 'var(--red)' }}>{(propAI * 100).toFixed(2)}%</div>
-              <div style={{ fontSize: 10, color: 'var(--mid)', marginTop: 2 }}>
-                {propAI < 0.015 ? 'Below 1.5% — USDA RD eligible' : propAI < 0.02 ? 'Affordable' : 'Affordability concern'}
-              </div>
+              <div style={{ fontSize: 10, color: 'var(--mid)', marginTop: 2 }}>{aiLabel(propAI)}</div>
             </div>
           </div>
         ) : (
@@ -306,14 +350,34 @@ export function Step8({ study, onField }) {
         <div className="g2">
           <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
             <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Current DTI</div>
-            <div style={{ fontSize: 22, color: curDTI < 0.45 ? 'var(--lime-dim)' : 'var(--red)' }}>{(curDTI * 100).toFixed(1)}%</div>
+            <div style={{ fontSize: 22, color: curDTI == null ? 'var(--dim)' : curDTI < 0.45 ? 'var(--lime-dim)' : 'var(--red)' }}>{curDTI == null ? 'N/A' : (curDTI * 100).toFixed(1) + '%'}</div>
           </div>
           <div style={{ padding: 12, background: 'var(--lime-pale)', borderRadius: 7, border: '1px solid #86efac' }}>
             <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Proposed DTI</div>
-            <div style={{ fontSize: 22, color: propDTI < 0.45 ? 'var(--lime-dim)' : 'var(--red)' }}>{(propDTI * 100).toFixed(1)}%</div>
+            <div style={{ fontSize: 22, color: propDTI == null ? 'var(--dim)' : propDTI < 0.45 ? 'var(--lime-dim)' : 'var(--red)' }}>{propDTI == null ? 'N/A' : (propDTI * 100).toFixed(1) + '%'}</div>
           </div>
         </div>
       </div>
+      {(curDSCR != null || propDSCR != null) && (
+        <div className="card">
+          <div className="sh">Debt Service Coverage Ratio (DSCR)</div>
+          <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 12 }}>
+            DSCR measures how comfortably net revenue (after operating expenses) covers debt payments — the metric
+            USDA Rural Development and OWRB loan covenants are typically written against. Lenders generally
+            require 1.10–1.25 or better.
+          </p>
+          <div className="g2">
+            <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Current DSCR</div>
+              <div style={{ fontSize: 22, color: curDSCR == null ? 'var(--dim)' : curDSCR >= 1.25 ? 'var(--lime-dim)' : curDSCR >= 1.1 ? 'var(--amber)' : 'var(--red)' }}>{fmt.ratio(curDSCR, 'No debt')}</div>
+            </div>
+            <div style={{ padding: 12, background: 'var(--lime-pale)', borderRadius: 7, border: '1px solid #86efac' }}>
+              <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>Proposed DSCR</div>
+              <div style={{ fontSize: 22, color: propDSCR == null ? 'var(--dim)' : propDSCR >= 1.25 ? 'var(--lime-dim)' : propDSCR >= 1.1 ? 'var(--amber)' : 'var(--red)' }}>{fmt.ratio(propDSCR, 'No debt')}</div>
+            </div>
+          </div>
+        </div>
+      )}
       {study.aiAnalysis?.content && (
         <div className="card">
           <div className="sh">AI-Generated Analysis</div>
@@ -322,6 +386,19 @@ export function Step8({ study, onField }) {
           </div>
         </div>
       )}
+      <div className="card" style={{ borderLeft: '4px solid var(--amber)' }}>
+        <div className="sh">Data Quality & Limitations</div>
+        <p style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.7, marginBottom: 8 }}>
+          Results in this study are dependent on the quality, completeness, and accuracy of the data provided by
+          the water system. Missing, incomplete, estimated, or manually transcribed billing data — including data
+          converted from scanned or photographed reports — may affect the accuracy of the revenue figures and
+          projections. All projections should be reviewed with the system's records before being used for final
+          rate decisions.
+        </p>
+        <p style={{ fontSize: 11.5, color: 'var(--mid)', lineHeight: 1.65 }}>
+          Revenue basis for this study: {revenueBasisText(distBasis, 'Step 2')}
+        </p>
+      </div>
       <div className="card" style={{ borderLeft: '4px solid var(--lime)' }}>
         <div className="sh">Final Recommendations</div>
         <p style={{ fontSize: 12.5, lineHeight: 1.75, color: 'var(--text)', marginBottom: 10 }}>

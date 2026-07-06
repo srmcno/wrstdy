@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { defaultClasses, defaultTiers, defBudget } from '../lib/state.js';
-import { nv, classMonthlyIncome, totalRevenue, fmt, calcBill, calcHML, budgetTotal } from '../lib/calc.js';
+import {
+  nv, classMonthlyIncome, totalRevenue, fmt, calcBill, calcHML, budgetTotal,
+  hasUsageDistribution, classCustomers, classGallons, usageBrackets,
+} from '../lib/calc.js';
 import { F, $I } from '../components/atoms.jsx';
 import { TierTable } from '../components/TierTable.jsx';
+import { UsageTable } from '../components/UsageTable.jsx';
 import { ask, hasApiKey, MODEL_HEAVY } from '../lib/ai.js';
 import { pushToast } from '../components/Toasts.jsx';
 
 // True for the user-defined slots c5/c6/c7 only (NOT 'com' for Commercial).
 const isCustomSlot = (id) => /^c\d/.test(id);
+const classPlaceholder = (c) => isCustomSlot(c.id) ? `Custom class ${c.id.replace('c', '')}` : c.id;
 
 // Quote a CSV field if it contains a comma, quote, or newline.
 const csvQuote = (v) => {
@@ -127,6 +132,9 @@ export function Step2({ study, onField }) {
   };
 
   const d = tab === 'prop' ? sel.prop : sel.cur;
+  const distActive = hasUsageDistribution(sel);
+  const effCust = classCustomers(sel, tab === 'prop');
+  const effGal = classGallons(sel, tab === 'prop');
   const totCur = totalRevenue(classes, false);
   const totProp = totalRevenue(classes, true);
 
@@ -136,22 +144,23 @@ export function Step2({ study, onField }) {
     try {
       const propBT = budgetTotal(study.propBudget || defBudget());
       const targetAnnualRevenue = propBT.total * 12 * 1.05; // expense + 5% margin (OR ~1.05+)
+      const brackets = usageBrackets(sel);
       const data = {
         className: sel.name || sel.id,
-        currentCustomers: nv(sel.cur.customers),
-        currentGallonsSold: nv(sel.cur.gallonsSold),
+        currentCustomers: classCustomers(sel, false),
+        currentGallonsSold: classGallons(sel, false),
         currentMinCharge: nv(sel.cur.minCharge),
         currentTiers: (sel.cur.tiers || []).map(t => ({ gal: nv(t.gal), rate: nv(t.rate) })),
-        proposedCustomers: nv(sel.prop.customers) || nv(sel.cur.customers),
-        proposedGallonsSold: nv(sel.prop.gallonsSold) || nv(sel.cur.gallonsSold),
+        proposedCustomers: classCustomers(sel, true) || classCustomers(sel, false),
+        proposedGallonsSold: classGallons(sel, true) || classGallons(sel, false),
         monthlyMHI: nv(mhi),
         targetAnnualRevenue: Math.round(targetAnnualRevenue),
         proposedMonthlyExpenses: propBT.total,
       };
       const system = `You are a water-rate consultant for the Choctaw Nation OWRM. Given a class's current rates, customer count, usage, MHI, and the system's proposed monthly expenses, propose a tiered rate structure that:
-1. Generates close to the target revenue.
-2. Keeps the bill at 5,000 gallons under 2.0% of monthly MHI (USDA/EPA affordability) and ideally under 1.5% (USDA RD grant eligibility).
-3. Uses a moderately progressive 4-6 tier structure (1k, 2k, 3k, ... gal blocks) that encourages conservation without punishing essential use.
+1. Generates close to the target revenue. When a customer usage distribution is provided, compute revenue bracket-by-bracket (customers × bill at their usage) — do NOT assume everyone uses the class average.
+2. Keeps the bill at 5,000 gallons under 2.0% of monthly MHI (EPA affordability benchmark). Note that USDA RD grant assistance generally targets systems whose cost burden EXCEEDS 1.5% of MHI — affordability and grant positioning trade off; do not treat "under 1.5%" as grant-eligible.
+3. Uses a moderately progressive tier structure that encourages conservation without punishing essential use. Usage past the final block continues at the final block's rate, so a meaningful top-block rate shifts burden to high-volume users.
 4. Sets a base/minimum charge that recovers fixed costs but is not excessive.
 Return STRICT JSON only — no markdown, no commentary outside JSON. Schema:
 {
@@ -162,6 +171,9 @@ Return STRICT JSON only — no markdown, no commentary outside JSON. Schema:
       const user = `CLASS: ${data.className}
 Customers: ${data.proposedCustomers}
 Total monthly gallons sold: ${data.proposedGallonsSold}
+${brackets.length > 0
+  ? `Customer usage distribution (customers @ monthly gallons): ${brackets.map(b => `${nv(b.customers)} @ ${nv(b.gallons)}`).join(', ')}`
+  : 'No usage distribution entered — only the class average is known (treat revenue as approximate).'}
 Monthly MHI (per household): $${data.monthlyMHI || 'unknown — assume $4,000'}
 System's proposed monthly expenses: $${data.proposedMonthlyExpenses}
 Target annual revenue (across ALL classes): $${data.targetAnnualRevenue}
@@ -291,19 +303,18 @@ Propose new rates for this class only.`;
                     style={{ flex: 1, fontSize: 12, color: c.enabled ? 'var(--text)' : 'var(--dim)', cursor: 'pointer' }}
                     onClick={() => setSelId(c.id)}
                   >
-                    {isCustomSlot(c.id) ? (
-                      <input
-                        className="inp"
-                        value={c.name}
-                        onChange={(e) => {
-                          const nc = classes.map(x => x.id === c.id ? { ...x, name: e.target.value } : x);
-                          onField('classes', nc);
-                        }}
-                        placeholder={`Class ${c.id.replace('c', '')}`}
-                        style={{ fontSize: 11, padding: '2px 6px', border: 'none', background: 'transparent', width: '100%', color: 'inherit' }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : <span>{c.name}</span>}
+                    <input
+                      className="inp"
+                      value={c.name}
+                      onChange={(e) => {
+                        const nc = classes.map(x => x.id === c.id ? { ...x, name: e.target.value } : x);
+                        onField('classes', nc);
+                      }}
+                      placeholder={classPlaceholder(c)}
+                      title="Class names are editable — rename to match your system (e.g. sewer classes)"
+                      style={{ fontSize: 11, padding: '2px 6px', border: 'none', background: 'transparent', width: '100%', color: 'inherit' }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
                   </div>
                 </div>
               </div>
@@ -321,7 +332,7 @@ Propose new rates for this class only.`;
           <div style={{ flex: 1 }}>
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <div style={{ fontSize: 14, color: 'var(--teal)' }}>{sel.name || (isCustomSlot(sel.id) ? `Class ${sel.id.replace('c', '')}` : 'Custom Class')}</div>
+                <div style={{ fontSize: 14, color: 'var(--teal)' }}>{sel.name || classPlaceholder(sel)}</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   {tab !== 'cmp' && (
                     <button
@@ -354,22 +365,38 @@ Propose new rates for this class only.`;
               ) : (
                 <>
                   <div className="g3" style={{ marginBottom: 14 }}>
-                    <F label="Number of Customers">
-                      <input
-                        className="inp"
-                        type="number"
-                        value={d.customers}
-                        onChange={(e) => updClass(sel.id, [tab, 'customers'], e.target.value)}
-                      />
+                    <F
+                      label="Number of Customers"
+                      hint={distActive ? 'Derived from the usage distribution below' : undefined}
+                    >
+                      {distActive ? (
+                        <input className="inp" value={fmt.n(effCust)} disabled title="Derived from the usage distribution below" />
+                      ) : (
+                        <input
+                          className="inp"
+                          type="number"
+                          min="0"
+                          value={d.customers}
+                          onChange={(e) => updClass(sel.id, [tab, 'customers'], e.target.value)}
+                        />
+                      )}
                     </F>
-                    <F label="Total Monthly Gallons Sold" hint="Across all customers in this class">
-                      <input
-                        className="inp"
-                        type="number"
-                        value={d.gallonsSold || ''}
-                        onChange={(e) => updClass(sel.id, [tab, 'gallonsSold'], e.target.value)}
-                        placeholder="0"
-                      />
+                    <F
+                      label="Total Monthly Gallons Sold"
+                      hint={distActive ? 'Derived from the usage distribution below' : 'Across all customers in this class'}
+                    >
+                      {distActive ? (
+                        <input className="inp" value={fmt.n(effGal)} disabled title="Derived from the usage distribution below" />
+                      ) : (
+                        <input
+                          className="inp"
+                          type="number"
+                          min="0"
+                          value={d.gallonsSold || ''}
+                          onChange={(e) => updClass(sel.id, [tab, 'gallonsSold'], e.target.value)}
+                          placeholder="0"
+                        />
+                      )}
                     </F>
                     <F label="Base / Minimum Charge ($)" hint="Monthly minimum regardless of usage">
                       <$I
@@ -386,7 +413,13 @@ Propose new rates for this class only.`;
                     mhi={tab === 'prop' ? mhi : null}
                     onSetBase={(v) => updClass(sel.id, [tab, 'minCharge'], v)}
                   />
-                  {nv(d.customers) > 0 && nv(d.gallonsSold) > 0 && (
+                  <UsageTable
+                    usage={sel.usage || []}
+                    onChange={(u) => updClass(sel.id, ['usage'], u)}
+                    curSide={sel.cur}
+                    propSide={sel.prop}
+                  />
+                  {(distActive || (nv(d.customers) > 0 && nv(d.gallonsSold) > 0)) && (
                     <div style={{ marginTop: 14, padding: 12, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                         <div>
@@ -399,11 +432,17 @@ Propose new rates for this class only.`;
                         </div>
                         <div>
                           <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Avg Usage/Customer</div>
-                          <div style={{ fontSize: 18, color: 'var(--teal)' }}>{fmt.n(Math.round(nv(d.gallonsSold) / nv(d.customers)))} gal</div>
+                          <div style={{ fontSize: 18, color: 'var(--teal)' }}>{effCust > 0 ? fmt.n(Math.round(effGal / effCust)) : '—'} gal</div>
                         </div>
                         <div>
                           <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Avg Monthly Bill</div>
-                          <div style={{ fontSize: 18, color: 'var(--teal)' }}>{fmt.c(classMonthlyIncome(sel, tab === 'prop').monthly / nv(d.customers))}</div>
+                          <div style={{ fontSize: 18, color: 'var(--teal)' }}>{effCust > 0 ? fmt.c(classMonthlyIncome(sel, tab === 'prop').monthly / effCust) : '—'}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Revenue Basis</div>
+                          <div style={{ fontSize: 13, color: distActive ? 'var(--lime-dim)' : 'var(--amber)', paddingTop: 4 }}>
+                            {distActive ? 'Usage distribution' : 'Class average (approx.)'}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -433,8 +472,11 @@ Propose new rates for this class only.`;
                     const pct = ci.monthly > 0 ? chg / ci.monthly : 0;
                     return (
                       <tr key={c.id}>
-                        <td>{c.name || c.id}</td>
-                        <td>{fmt.n(c.cur.customers || c.prop.customers)}</td>
+                        <td>
+                          {c.name || classPlaceholder(c)}
+                          {hasUsageDistribution(c) && <span title="Revenue computed from usage distribution" style={{ marginLeft: 5, fontSize: 9, color: 'var(--lime-dim)' }}>◈ dist</span>}
+                        </td>
+                        <td>{fmt.n(classCustomers(c, true) || classCustomers(c, false))}</td>
                         <td style={{ textAlign: 'right' }}>{fmt.c(ci.monthly)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt.c(pi.monthly)}</td>
                         <td style={{ textAlign: 'right', color: chg >= 0 ? 'var(--lime-dim)' : 'var(--red)' }}>
@@ -467,6 +509,10 @@ Propose new rates for this class only.`;
   );
 }
 
+// Derived value for locked (distribution-driven) compare rows.
+const classCustomersOrGallons = (cls, isProposed, key) =>
+  key === 'customers' ? classCustomers(cls, isProposed) : classGallons(cls, isProposed);
+
 // Compact $-prefixed number input for Compare cells
 const CmpInput = ({ value, onChange, money = false, step = '0.01' }) => (
   <div style={{ position: 'relative' }}>
@@ -497,6 +543,7 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
   const hml = mhi ? calcHML({ prop: { minCharge: cls.prop?.minCharge, tiers: cls.prop?.tiers || [] } }, true, mhi) : null;
   const cur = cls.cur || {};
   const prop = cls.prop || {};
+  const distActive = hasUsageDistribution(cls);
   const tierMax = Math.max((cur.tiers || []).length, (prop.tiers || []).length, 1);
   const tiers = [];
   for (let i = 0; i < tierMax; i++) {
@@ -516,8 +563,8 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
   const samples = [2000, 5000, 10000, 20000].map(billRow);
 
   const fields = [
-    { label: 'Number of Customers', curVal: cur.customers, propVal: prop.customers, key: 'customers', money: false, step: '1' },
-    { label: 'Monthly Gallons Sold', curVal: cur.gallonsSold, propVal: prop.gallonsSold, key: 'gallonsSold', money: false, step: '100' },
+    { label: 'Number of Customers', curVal: cur.customers, propVal: prop.customers, key: 'customers', money: false, step: '1', derived: distActive },
+    { label: 'Monthly Gallons Sold', curVal: cur.gallonsSold, propVal: prop.gallonsSold, key: 'gallonsSold', money: false, step: '100', derived: distActive },
     { label: 'Base / Minimum Charge', curVal: cur.minCharge, propVal: prop.minCharge, key: 'minCharge', money: true, step: '0.01' },
   ];
 
@@ -529,20 +576,24 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
     <div>
       <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 10 }}>
         Edit either column directly. The Δ column updates as you change values; the calculated income row recomputes from your latest inputs.
+        {distActive && <> Customer counts and gallons derive from this class's usage distribution (edit it on the Current/Proposed tab), so those rows are locked here.</>}
       </p>
       {hml && (
         <div style={{ marginBottom: 12, padding: 10, background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border)' }}>
           <div className="flb" style={{ marginBottom: 6 }}>Recommended Proposed Base Charge (% of Monthly MHI)</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn b-low btn-sm" onClick={() => onUpd('prop', 'minCharge', hml.low.toFixed(2))}>
-              Low — {fmt.c(hml.low)} <span style={{ fontSize: 10 }}>(1.5% USDA RD)</span>
+              Low — {fmt.c(hml.low)} <span style={{ fontSize: 10 }}>(1.5% of MHI)</span>
             </button>
             <button className="btn b-med btn-sm" onClick={() => onUpd('prop', 'minCharge', hml.med.toFixed(2))}>
-              Medium — {fmt.c(hml.med)} <span style={{ fontSize: 10 }}>(2.0% benchmark)</span>
+              Medium — {fmt.c(hml.med)} <span style={{ fontSize: 10 }}>(2.0% of MHI)</span>
             </button>
             <button className="btn b-hi btn-sm" onClick={() => onUpd('prop', 'minCharge', hml.high.toFixed(2))}>
-              High — {fmt.c(hml.high)} <span style={{ fontSize: 10 }}>(2.5% EPA)</span>
+              High — {fmt.c(hml.high)} <span style={{ fontSize: 10 }}>(2.5% of MHI)</span>
             </button>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 5 }}>
+            USDA RD grant assistance generally targets systems whose water cost exceeds 1.5% of MHI; below 2.0% is considered affordable.
           </div>
         </div>
       )}
@@ -558,16 +609,25 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
         </thead>
         <tbody>
           {fields.map(f => {
-            const d = nv(f.propVal) - nv(f.curVal);
+            const curShown = f.derived ? classCustomersOrGallons(cls, false, f.key) : f.curVal;
+            const propShown = f.derived ? classCustomersOrGallons(cls, true, f.key) : f.propVal;
+            const d = nv(propShown) - nv(curShown);
             const fmtVal = f.money ? fmt.c : fmt.n;
             return (
               <tr key={f.key}>
-                <td style={{ verticalAlign: 'middle' }}>{f.label}</td>
-                <td style={{ width: 130 }}>
-                  <CmpInput value={f.curVal} onChange={(v) => onUpd('cur', f.key, v)} money={f.money} step={f.step} />
+                <td style={{ verticalAlign: 'middle' }}>
+                  {f.label}
+                  {f.derived && <span style={{ marginLeft: 5, fontSize: 9, color: 'var(--lime-dim)' }} title="Derived from usage distribution">◈ dist</span>}
                 </td>
                 <td style={{ width: 130 }}>
-                  <CmpInput value={f.propVal} onChange={(v) => onUpd('prop', f.key, v)} money={f.money} step={f.step} />
+                  {f.derived
+                    ? <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--mid)', padding: '4px 6px' }}>{fmt.n(curShown)}</div>
+                    : <CmpInput value={f.curVal} onChange={(v) => onUpd('cur', f.key, v)} money={f.money} step={f.step} />}
+                </td>
+                <td style={{ width: 130 }}>
+                  {f.derived
+                    ? <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--mid)', padding: '4px 6px' }}>{fmt.n(propShown)}</div>
+                    : <CmpInput value={f.propVal} onChange={(v) => onUpd('prop', f.key, v)} money={f.money} step={f.step} />}
                 </td>
                 <td style={{ textAlign: 'right', color: d > 0 ? 'var(--red)' : d < 0 ? 'var(--lime-dim)' : 'var(--mid)', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {d === 0 ? '—' : (d > 0 ? '+' : '') + fmtVal(d)}

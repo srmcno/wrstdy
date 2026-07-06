@@ -33,6 +33,16 @@ export function makeSampleStudy() {
     if (c.id === 'res') {
       return {
         ...c, enabled: true,
+        // Usage distribution (drives revenue): 240 customers across usage
+        // levels, including a handful of high-volume users past the last
+        // rate block — the case average-based revenue gets wrong.
+        usage: [
+          { customers: '60', gallons: '2000', note: 'From billing register' },
+          { customers: '80', gallons: '3500', note: '' },
+          { customers: '60', gallons: '5000', note: '' },
+          { customers: '30', gallons: '8000', note: '' },
+          { customers: '10', gallons: '20000', note: 'Poultry operations' },
+        ],
         cur:  { customers: '240', gallonsSold: '1080000', minCharge: '18.00', tiers: tiers([4.25, 4.75, 5.25, 5.75, 6.25, 6.75]) },
         prop: { customers: '240', gallonsSold: '1080000', minCharge: '24.00', tiers: tiers([5.50, 6.00, 6.50, 7.00, 7.50, 8.00]) },
       };
