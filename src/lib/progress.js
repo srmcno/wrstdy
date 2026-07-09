@@ -33,10 +33,12 @@ export function stepCompletion(study = {}) {
 }
 
 const STALE_EXPORT_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-// Export itself writes lastExportedAt and updatedAt a few milliseconds apart
-// (two separate `new Date()` calls in the same save), so updatedAt is always
-// very slightly later than lastExportedAt even with zero real edits. Without
-// this tolerance, that alone would re-trigger the reminder after 7 days.
+// App.jsx's export flow writes lastExportedAt without touching updatedAt, so
+// in practice updated <= lastExport right after an export. This tolerance is
+// a defensive margin against any millisecond-level clock skew between the two
+// fields (e.g. a future code path that saves both near-simultaneously) rather
+// than a fix for a known gap — it costs nothing and prevents that class of
+// false positive outright.
 const EDIT_TOLERANCE_MS = 5000;
 
 // True once a study has real financial data entered but hasn't been backed

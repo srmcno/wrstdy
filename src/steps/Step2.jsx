@@ -586,8 +586,13 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
     { label: 'Base / Minimum Charge', curVal: cur.minCharge, propVal: prop.minCharge, key: 'minCharge', money: true, step: '0.01' },
   ];
 
+  // No `color` override in inline style unless explicitly passed — `.dt th`
+  // already sets a light, readable color against the table header's dark
+  // teal background; forcing `color: inherit` here (the previous behavior)
+  // overrode that with the page's default near-black text color, making
+  // every one of these header cells nearly unreadable against the teal.
   const colHeader = (text, color) => (
-    <th style={{ textAlign: 'right', color: color || 'inherit' }}>{text}</th>
+    <th style={{ textAlign: 'right', ...(color ? { color } : {}) }}>{text}</th>
   );
 
   return (
