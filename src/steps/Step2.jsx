@@ -132,7 +132,7 @@ export function Step2({ study, onField }) {
         gallonsSold: gallons || '',
         minCharge: minCharge || '',
         tiers: rates.length > 0
-          ? rates.map(parseTierCell).filter(t => t.gal > 0)
+          ? rates.map(parseTierCell).filter(t => t.gal > 0).sort((a, b) => a.gal - b.gal)
           : (target.cur.tiers && target.cur.tiers.length ? target.cur.tiers.map(t => ({ ...t })) : defaultTiers()),
       };
       target.cur = side;

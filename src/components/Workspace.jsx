@@ -122,11 +122,18 @@ export function Workspace({ study, onUpdate, onDelete, onExport }) {
           </button>
         ))}
       </div>
-      <div className="ws-progress no-print" aria-hidden="true">
-        <div className="ws-progress-track">
+      <div
+        className="ws-progress no-print"
+        role="progressbar"
+        aria-valuenow={doneCount}
+        aria-valuemin={0}
+        aria-valuemax={STEPS.length}
+        aria-label={`${doneCount} of ${STEPS.length} steps have data`}
+      >
+        <div className="ws-progress-track" aria-hidden="true">
           <div className="ws-progress-fill" style={{ width: `${(doneCount / STEPS.length) * 100}%` }} />
         </div>
-        <span className="ws-progress-lbl">{doneCount} of {STEPS.length} steps have data</span>
+        <span className="ws-progress-lbl" aria-hidden="true">{doneCount} of {STEPS.length} steps have data</span>
       </div>
       <div className="ws-sc">
         {step === 0 && <Step1 study={study} onField={field} />}

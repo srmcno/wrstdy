@@ -346,6 +346,11 @@ export async function exportDocx(report, filename, sealUint8) {
   ));
   children.push(P('In this revenue table, green indicates additional revenue to the system (an increase in the $ Δ column).', { color: DIM, italic: true, size: 18 }));
 
+  // Null-aware helpers — rate structure / bill impact rows report null when a
+  // side has no rate data entered yet, and must read "N/A", not "$0.00".
+  const rateCell = (v) => v == null ? 'N/A' : `${fmt.r(v)}/1k`;
+  const signedCell = (v, fmter) => v == null ? 'N/A' : (v >= 0 ? '+' : '') + fmter(v);
+
   // Rate structure: current vs. proposed, per class
   if (report.rateStructure?.length) {
     children.push(H('Rate Structure: Current vs. Proposed'));
@@ -360,15 +365,15 @@ export async function exportDocx(report, filename, sealUint8) {
         [
           [
             'Base / Minimum Charge',
-            { text: fmt.c(cls.curMinCharge), align: AlignmentType.RIGHT },
-            { text: fmt.c(cls.propMinCharge), align: AlignmentType.RIGHT },
-            { text: (cls.minChargeDelta >= 0 ? '+' : '') + fmt.c(cls.minChargeDelta), align: AlignmentType.RIGHT },
+            { text: fmt.cd(cls.curMinCharge, 'N/A'), align: AlignmentType.RIGHT },
+            { text: fmt.cd(cls.propMinCharge, 'N/A'), align: AlignmentType.RIGHT },
+            { text: signedCell(cls.minChargeDelta, fmt.c), align: AlignmentType.RIGHT },
           ],
           ...cls.tiers.map(t => [
             t.label ? `${t.label} (up to ${fmt.n(t.gal)} gal)` : `Up to ${fmt.n(t.gal)} gal`,
-            { text: `${fmt.r(t.cur)}/1k`, align: AlignmentType.RIGHT },
-            { text: `${fmt.r(t.prop)}/1k`, align: AlignmentType.RIGHT },
-            { text: (t.delta >= 0 ? '+' : '') + `${fmt.r(t.delta)}`, align: AlignmentType.RIGHT },
+            { text: rateCell(t.cur), align: AlignmentType.RIGHT },
+            { text: rateCell(t.prop), align: AlignmentType.RIGHT },
+            { text: signedCell(t.delta, fmt.r), align: AlignmentType.RIGHT },
           ]),
         ],
       ));
@@ -388,12 +393,17 @@ export async function exportDocx(report, filename, sealUint8) {
         ],
         cls.rows.map(r => [
           `${fmt.n(r.gal)} gallons`,
-          { text: fmt.c(r.cur), align: AlignmentType.RIGHT },
-          { text: fmt.c(r.prop), align: AlignmentType.RIGHT },
+          { text: fmt.cd(r.cur, 'N/A'), align: AlignmentType.RIGHT },
+          { text: fmt.cd(r.prop, 'N/A'), align: AlignmentType.RIGHT },
           {
-            text: (r.delta >= 0 ? '+' : '') + fmt.c(r.delta) + (r.pct != null ? ` (${(r.pct >= 0 ? '+' : '') + (r.pct * 100).toFixed(1)}%)` : ''),
+            text: r.delta == null
+              ? 'N/A'
+              : (r.delta >= 0 ? '+' : '') + fmt.c(r.delta) + (r.pct != null ? ` (${(r.pct >= 0 ? '+' : '') + (r.pct * 100).toFixed(1)}%)` : ''),
             align: AlignmentType.RIGHT,
-            color: r.delta >= 0 ? GREEN_DARK : RED,
+            // Customer-facing perspective: a higher bill is bad news for the
+            // customer, the opposite of the revenue tables above (where more
+            // revenue to the system is colored green).
+            color: r.delta == null ? undefined : r.delta >= 0 ? RED : GREEN_DARK,
           },
         ]),
       ));

@@ -19,6 +19,7 @@ const FONT = 'helvetica';
 const TEAL = [30, 61, 59];
 const LIME = [118, 185, 0];
 const RED = [220, 38, 38];
+const GREEN_DARK = [22, 101, 52];
 const MID = [71, 85, 105];
 const DIM = [148, 163, 184];
 const BORDER = [226, 232, 240];
@@ -602,6 +603,11 @@ export async function exportPDF(report, filename) {
   }));
   y = pdfDoc.lastAutoTable.finalY + 10;
 
+  // Null-aware helpers — rate structure / bill impact rows report null when a
+  // side has no rate data entered yet, and must read "N/A", not "$0.00".
+  const rateCell = (v) => v == null ? 'N/A' : `${fmt.r(v)}/1k`;
+  const signedCell = (v, fmter) => v == null ? 'N/A' : (v >= 0 ? '+' : '') + fmter(v);
+
   // ---- Rate structure: current vs. proposed, per class ----
   if (report.rateStructure?.length) {
     y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
@@ -615,12 +621,12 @@ export async function exportPDF(report, filename) {
         startY: y,
         head: [['Item', 'Current', 'Proposed', 'Δ']],
         body: [
-          ['Base / Minimum Charge', fmt.c(cls.curMinCharge), fmt.c(cls.propMinCharge),
-            (cls.minChargeDelta >= 0 ? '+' : '') + fmt.c(cls.minChargeDelta)],
+          ['Base / Minimum Charge', fmt.cd(cls.curMinCharge, 'N/A'), fmt.cd(cls.propMinCharge, 'N/A'),
+            signedCell(cls.minChargeDelta, fmt.c)],
           ...cls.tiers.map(t => [
             (t.label ? `${t.label} (up to ${fmt.n(t.gal)} gal)` : `Up to ${fmt.n(t.gal)} gal`),
-            `${fmt.r(t.cur)}/1k`, `${fmt.r(t.prop)}/1k`,
-            (t.delta >= 0 ? '+' : '') + `${fmt.r(t.delta)}`,
+            rateCell(t.cur), rateCell(t.prop),
+            signedCell(t.delta, fmt.r),
           ]),
         ],
         columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
@@ -642,10 +648,19 @@ export async function exportPDF(report, filename) {
         startY: y,
         head: [['Monthly Usage', 'Current Bill', 'Proposed Bill', 'Increase']],
         body: cls.rows.map(r => [
-          `${fmt.n(r.gal)} gallons`, fmt.c(r.cur), fmt.c(r.prop),
-          (r.delta >= 0 ? '+' : '') + fmt.c(r.delta) + (r.pct != null ? ` (${(r.pct >= 0 ? '+' : '') + (r.pct * 100).toFixed(1)}%)` : ''),
+          `${fmt.n(r.gal)} gallons`, fmt.cd(r.cur, 'N/A'), fmt.cd(r.prop, 'N/A'),
+          r.delta == null ? 'N/A' : (r.delta >= 0 ? '+' : '') + fmt.c(r.delta) + (r.pct != null ? ` (${(r.pct >= 0 ? '+' : '') + (r.pct * 100).toFixed(1)}%)` : ''),
         ]),
         columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.column.index === 3) {
+            const r = cls.rows[data.row.index];
+            // Customer-facing perspective: a higher bill is bad news for the
+            // customer — the opposite of revenue tables, where more revenue
+            // to the system is colored green.
+            if (r.delta != null) data.cell.styles.textColor = r.delta >= 0 ? RED : GREEN_DARK;
+          }
+        },
       }));
       y = pdfDoc.lastAutoTable.finalY + 6;
     }

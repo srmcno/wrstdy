@@ -362,6 +362,22 @@ test('billImpactExamples returns one row set per enabled class, skipping disable
   assert.equal(out[0].name, 'Residential Water');
 });
 
+test('billImpactForClass reports N/A (null) for a side with no rate data entered yet', () => {
+  const cls = { cur: {}, prop: { minCharge: '10', tiers: [{ gal: 1000, rate: '4' }] } };
+  const [row] = billImpactForClass(cls, [1000]);
+  assert.equal(row.cur, null);
+  assert.equal(row.prop, calcBill('10', cls.prop.tiers, 1000));
+  assert.equal(row.delta, null);
+  assert.equal(row.pct, null);
+});
+
+test('billImpactForClass treats a genuine $0 base charge with real tier rates as real data, not N/A', () => {
+  const cls = { cur: { minCharge: '0', tiers: [{ gal: 1000, rate: '4' }] }, prop: { minCharge: '0', tiers: [{ gal: 1000, rate: '4' }] } };
+  const [row] = billImpactForClass(cls, [1000]);
+  assert.equal(row.cur, 4);
+  assert.equal(row.prop, 4);
+});
+
 // ─── Rate structure comparison ───────────────────────────────────────────────
 
 test('rateStructureComparison pairs current/proposed tiers and base charge per class', () => {
@@ -379,9 +395,26 @@ test('rateStructureComparison pairs current/proposed tiers and base charge per c
   assert.equal(row.tiers[0].label, 'Lifeline');
   assert.equal(row.tiers[0].cur, 4.25);
   assert.equal(row.tiers[0].prop, 5);
-  // Proposed has no second tier — cur-only row still reports its current rate.
+  // Proposed has no second tier — cur-only row still reports its current rate,
+  // while proposed falls back to its own final tier's rate (calcBill's actual
+  // billing behavior for usage beyond the last configured block).
   assert.equal(row.tiers[1].cur, 4.75);
-  assert.equal(row.tiers[1].prop, 0);
+  assert.equal(row.tiers[1].prop, 5);
+});
+
+test('rateStructureComparison reports N/A (null) for a side with no rate data entered yet', () => {
+  const classes = [{
+    id: 'res', name: 'Residential Water', enabled: true,
+    cur: {},
+    prop: { minCharge: '20', tiers: [{ gal: 1000, rate: '5.00' }] },
+  }];
+  const [row] = rateStructureComparison(classes);
+  assert.equal(row.curMinCharge, null);
+  assert.equal(row.propMinCharge, 20);
+  assert.equal(row.minChargeDelta, null);
+  assert.equal(row.tiers[0].cur, null);
+  assert.equal(row.tiers[0].prop, 5);
+  assert.equal(row.tiers[0].delta, null);
 });
 
 test('rateStructureComparison skips disabled classes', () => {

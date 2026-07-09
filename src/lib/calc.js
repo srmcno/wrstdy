@@ -160,13 +160,24 @@ export function affordabilityIndex(classes, isProposed, mhi) {
 // Sewer class, for example, gets its own row set.
 export const BILL_IMPACT_LEVELS = [1000, 2000, 5000, 10000];
 
+// True once a rate side has at least one real, non-zero value entered — a
+// base charge or a tier rate. Used to tell "nothing entered yet" (report N/A)
+// apart from "genuinely a $0 charge" (report $0.00), the same distinction the
+// rest of this module draws for every other metric.
+function sideHasRates(side = {}) {
+  return nv(side?.minCharge) > 0 || (Array.isArray(side?.tiers) && side.tiers.some(t => nv(t?.rate) > 0));
+}
+
 export function billImpactForClass(cls = {}, levels = BILL_IMPACT_LEVELS) {
   const curSide = cls?.cur || {};
   const propSide = cls?.prop || {};
+  const curHasData = sideHasRates(curSide);
+  const propHasData = sideHasRates(propSide);
   return levels.map(gal => {
-    const cur = calcBill(curSide.minCharge, curSide.tiers || [], gal);
-    const prop = calcBill(propSide.minCharge, propSide.tiers || [], gal);
-    return { gal, cur, prop, delta: prop - cur, pct: cur > 0 ? (prop - cur) / cur : null };
+    const cur = curHasData ? calcBill(curSide.minCharge, curSide.tiers || [], gal) : null;
+    const prop = propHasData ? calcBill(propSide.minCharge, propSide.tiers || [], gal) : null;
+    const delta = cur != null && prop != null ? prop - cur : null;
+    return { gal, cur, prop, delta, pct: delta != null && cur > 0 ? delta / cur : null };
   });
 }
 
@@ -187,21 +198,26 @@ export function rateStructureComparison(classes = []) {
     .map(c => {
       const curTiers = Array.isArray(c.cur?.tiers) ? c.cur.tiers : [];
       const propTiers = Array.isArray(c.prop?.tiers) ? c.prop.tiers : [];
+      const curHasData = sideHasRates(c.cur);
+      const propHasData = sideHasRates(c.prop);
+      // Usage beyond a side's final breakpoint continues at that side's final
+      // tier rate (calcBill's actual billing behavior) — a shorter tier list
+      // on one side must fall back to its own last rate here too, or the
+      // comparison shows a fake $0.00/1k for rows past its final block.
+      const lastRate = (tiers) => tiers.length > 0 ? nv(tiers[tiers.length - 1]?.rate) : null;
       const rowCount = Math.max(curTiers.length, propTiers.length);
       const tiers = Array.from({ length: rowCount }, (_, i) => {
         const gal = propTiers[i]?.gal ?? curTiers[i]?.gal ?? null;
         const label = propTiers[i]?.label || curTiers[i]?.label || '';
-        const cur = nv(curTiers[i]?.rate);
-        const prop = nv(propTiers[i]?.rate);
-        return { gal, label, cur, prop, delta: prop - cur };
+        const cur = !curHasData ? null : i < curTiers.length ? nv(curTiers[i]?.rate) : lastRate(curTiers);
+        const prop = !propHasData ? null : i < propTiers.length ? nv(propTiers[i]?.rate) : lastRate(propTiers);
+        const delta = cur != null && prop != null ? prop - cur : null;
+        return { gal, label, cur, prop, delta };
       });
-      const curMinCharge = nv(c.cur?.minCharge);
-      const propMinCharge = nv(c.prop?.minCharge);
-      return {
-        name: c.name || c.id,
-        curMinCharge, propMinCharge, minChargeDelta: propMinCharge - curMinCharge,
-        tiers,
-      };
+      const curMinCharge = curHasData ? nv(c.cur?.minCharge) : null;
+      const propMinCharge = propHasData ? nv(c.prop?.minCharge) : null;
+      const minChargeDelta = curMinCharge != null && propMinCharge != null ? propMinCharge - curMinCharge : null;
+      return { name: c.name || c.id, curMinCharge, propMinCharge, minChargeDelta, tiers };
     });
 }
 
