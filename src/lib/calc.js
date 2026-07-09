@@ -196,8 +196,13 @@ export function rateStructureComparison(classes = []) {
   return (Array.isArray(classes) ? classes : [])
     .filter(c => c?.enabled)
     .map(c => {
-      const curTiers = Array.isArray(c.cur?.tiers) ? c.cur.tiers : [];
-      const propTiers = Array.isArray(c.prop?.tiers) ? c.prop.tiers : [];
+      // normalizeTiers (the same normalization calcBill applies before
+      // billing) filters out padded/invalid entries — normalizeStudy pads
+      // every class to 6 tier slots, and a cleared "Block up to (gal)" field
+      // becomes gal: 0 via Number('') — and sorts/dedupes so this comparison
+      // never shows a bogus "Up to 0 gal" row or an out-of-order tier list.
+      const curTiers = normalizeTiers(c.cur?.tiers);
+      const propTiers = normalizeTiers(c.prop?.tiers);
       const curHasData = sideHasRates(c.cur);
       const propHasData = sideHasRates(c.prop);
       // Usage beyond a side's final breakpoint continues at that side's final

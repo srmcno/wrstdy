@@ -106,13 +106,12 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
     pushToast(`Exported ${filename}`);
+    // Export is a metadata action, not a content edit — write lastExportedAt
+    // directly instead of going through update(), which would also bump
+    // updatedAt to "now" and make it look like the study was just changed.
     // Export All backs up every study in the file, so every study's backup
-    // reminder should clear — not just the single-study path's target.
-    if (s) {
-      update(s.id, { lastExportedAt: exportedAt });
-    } else {
-      setStudies(p => p.map(x => ({ ...x, lastExportedAt: exportedAt })));
-    }
+    // reminder should clear, not just the single-study path's target.
+    setStudies(p => p.map(x => (!s || x.id === s.id) ? { ...x, lastExportedAt: exportedAt } : x));
   }
 
   function importStudy(e) {

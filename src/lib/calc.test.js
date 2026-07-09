@@ -421,3 +421,23 @@ test('rateStructureComparison skips disabled classes', () => {
   const classes = [{ id: 'who', name: 'Wholesale', enabled: false, cur: {}, prop: {} }];
   assert.deepEqual(rateStructureComparison(classes), []);
 });
+
+test('rateStructureComparison ignores padded/invalid tier slots (gal: 0 from a cleared field) and sorts out-of-order tiers', () => {
+  const classes = [{
+    id: 'res', name: 'Residential Water', enabled: true,
+    // normalizeStudy pads classes to 6 tier slots; a user clearing a "Block up
+    // to (gal)" field mid-edit produces gal: 0 via Number(''). Also out of
+    // order, as bulk-imported gal:rate pairs could be before the CSV-sort fix.
+    cur: { minCharge: '10', tiers: [{ gal: 2000, rate: '5' }, { gal: 0, rate: '' }, { gal: 1000, rate: '4' }] },
+    prop: { minCharge: '12', tiers: [{ gal: 1000, rate: '5' }] },
+  }];
+  const [row] = rateStructureComparison(classes);
+  // Only the two valid tiers survive, sorted ascending — no "Up to 0 gal" row.
+  assert.equal(row.tiers.length, 2);
+  assert.equal(row.tiers[0].gal, 1000);
+  assert.equal(row.tiers[0].cur, 4);
+  assert.equal(row.tiers[1].gal, 2000);
+  assert.equal(row.tiers[1].cur, 5);
+  // Proposed has only one real tier — the second row falls back to it.
+  assert.equal(row.tiers[1].prop, 5);
+});

@@ -83,10 +83,10 @@ test('needsBackupReminder is true once edits land more than 7 days after the las
   assert.equal(needsBackupReminder(study), true);
 });
 
-test('needsBackupReminder tolerates the few-millisecond gap export itself creates between lastExportedAt and updatedAt', () => {
-  // App.jsx's export flow writes lastExportedAt, then a separate `new Date()`
-  // call a moment later sets updatedAt on the same save — updatedAt is
-  // always very slightly later than lastExportedAt even with zero real edits.
+test('needsBackupReminder tolerates trivial millisecond-level clock skew between lastExportedAt and updatedAt', () => {
+  // Defensive margin, not a fix for a known gap — App.jsx's export flow
+  // writes lastExportedAt without touching updatedAt at all. This just
+  // guards against any future code path that saves both near-simultaneously.
   const study = normalizeStudy({
     propBudget: { emp: { salaries: '5000' } },
     lastExportedAt: '2020-01-01T00:00:00.000Z',
