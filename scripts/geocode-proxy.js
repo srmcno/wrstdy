@@ -72,14 +72,23 @@ const server = http.createServer(async (req, res) => {
     upstreamUrl.searchParams.set('addressdetails', url.searchParams.get('addressdetails') || '0');
 
     await waitForRateLimit();
-    const upstream = await fetch(upstreamUrl, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': `wrstdy-geocode-proxy/2.1.0 (${CONTACT})`,
-      },
-    });
-
-    const body = await upstream.text();
+    // Bound the whole upstream exchange (headers + body) — a hung Nominatim
+    // would otherwise hold the client request for undici's ~5-minute default.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15_000);
+    let upstream, body;
+    try {
+      upstream = await fetch(upstreamUrl, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': `wrstdy-geocode-proxy/2.1.0 (${CONTACT})`,
+        },
+        signal: ac.signal,
+      });
+      body = await upstream.text();
+    } finally {
+      clearTimeout(timer);
+    }
     res.writeHead(upstream.status, {
       'Access-Control-Allow-Origin': process.env.GEOCODE_CORS_ORIGIN || '*',
       'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',

@@ -218,7 +218,7 @@ export async function exportDocx(report, filename, sealUint8) {
     [
       ['Cost per 1,000 gallons', { text: fmt.cd(report.curCP1K, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.cd(report.propCP1K, 'N/A'), align: AlignmentType.RIGHT }],
       ['Operating Ratio', { text: fmt.ratio(report.curOR, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.ratio(report.propOR, 'N/A'), align: AlignmentType.RIGHT }],
-      ['Bill at 5,000 gal', { text: fmt.c(report.cost5kCur), align: AlignmentType.RIGHT }, { text: fmt.c(report.cost5kProp), align: AlignmentType.RIGHT }],
+      ['Bill at 5,000 gal', { text: fmt.cd(report.cost5kCur, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.cd(report.cost5kProp, 'N/A'), align: AlignmentType.RIGHT }],
       ['Affordability Index', { text: fmt.pd(report.curAI, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.pd(report.propAI, 'N/A'), align: AlignmentType.RIGHT }],
       ['Debt Service Coverage (DSCR)', { text: fmt.ratio(report.curDSCR, 'No debt'), align: AlignmentType.RIGHT }, { text: fmt.ratio(report.propDSCR, 'No debt'), align: AlignmentType.RIGHT }],
     ],
@@ -302,6 +302,18 @@ export async function exportDocx(report, filename, sealUint8) {
   children.push(P('Debt Service Coverage Ratio (DSCR)', { bold: true, color: TEAL, after: 60 }));
   children.push(P(`Net revenue after operating expenses divided by annual debt payments — the covenant metric USDA Rural Development and OWRB lenders typically require at 1.10–1.25 or better. Current: ${fmt.ratio(report.curDSCR, 'no debt in budget')}. Proposed: ${fmt.ratio(report.propDSCR, 'no debt in budget')}.`, { color: MID }));
 
+  // Depreciation & capital set-asides — present on screen and in the PDF;
+  // keep the Word version at parity so staff editing it retain the figures.
+  children.push(P('Depreciation & Capital Improvements', { bold: true, color: TEAL, after: 60 }));
+  children.push(P('Consistent funding of depreciation and capital improvements is essential for long-term system sustainability.', { color: MID }));
+  children.push(buildTable(
+    [{ text: 'Item' }, { text: 'Current', align: AlignmentType.RIGHT }, { text: 'Proposed', align: AlignmentType.RIGHT }],
+    [
+      ['Monthly depreciation set-aside', { text: fmt.c(report.curDepr), align: AlignmentType.RIGHT }, { text: fmt.c(report.propDepr), align: AlignmentType.RIGHT }],
+      ['Monthly capital improvement set-aside', { text: fmt.c(report.curLR), align: AlignmentType.RIGHT }, { text: fmt.c(report.propLR), align: AlignmentType.RIGHT }],
+    ],
+  ));
+
   if (report.mhi > 0) {
     children.push(P('Affordability Index', { bold: true, color: TEAL, after: 60 }));
     children.push(P('Cost of 5,000 gal ÷ Monthly MHI. USDA Rural Development considers utilities grant-eligible when the index exceeds 1.50% — a higher burden supports the grant case. Below 2.00% is considered affordable by EPA standards.', { color: MID }));
@@ -312,12 +324,15 @@ export async function exportDocx(report, filename, sealUint8) {
     children.push(buildTable(
       [{ text: '' }, { text: 'Current', align: AlignmentType.RIGHT }, { text: 'Proposed', align: AlignmentType.RIGHT }],
       [
-        ['5,000 gal Bill', { text: fmt.c(report.cost5kCur), align: AlignmentType.RIGHT }, { text: fmt.c(report.cost5kProp), align: AlignmentType.RIGHT }],
+        ['5,000 gal Bill', { text: fmt.cd(report.cost5kCur, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.cd(report.cost5kProp, 'N/A'), align: AlignmentType.RIGHT }],
         ['Monthly MHI', { text: fmt.c(report.mhi), align: AlignmentType.RIGHT }, { text: fmt.c(report.mhi), align: AlignmentType.RIGHT }],
         ['Affordability Index', { text: fmt.pd(report.curAI, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.pd(report.propAI, 'N/A'), align: AlignmentType.RIGHT }],
         ['Interpretation', { text: aiNote(report.curAI), align: AlignmentType.RIGHT }, { text: aiNote(report.propAI), align: AlignmentType.RIGHT }],
       ],
     ));
+  } else {
+    children.push(P('Affordability Index', { bold: true, color: TEAL, after: 60 }));
+    children.push(P('Median Monthly Household Income not entered — Affordability Index unavailable. Enter it in Step 1 → Demographics & MHI and re-export.', { color: RED }));
   }
 
   // Customer classes
@@ -334,7 +349,7 @@ export async function exportDocx(report, filename, sealUint8) {
       { text: fmt.c(r.cur), align: AlignmentType.RIGHT },
       { text: fmt.c(r.prop), align: AlignmentType.RIGHT },
       { text: (r.delta >= 0 ? '+' : '') + fmt.c(r.delta), align: AlignmentType.RIGHT, color: r.delta >= 0 ? GREEN_DARK : RED },
-      { text: r.pct.toFixed(1) + '%', align: AlignmentType.RIGHT },
+      { text: r.pct == null ? '—' : r.pct.toFixed(1) + '%', align: AlignmentType.RIGHT },
     ]),
     [
       'Total', '',
@@ -354,7 +369,7 @@ export async function exportDocx(report, filename, sealUint8) {
   // Rate structure: current vs. proposed, per class
   if (report.rateStructure?.length) {
     children.push(H('Rate Structure: Current vs. Proposed'));
-    children.push(P('Base charge and volume tier rates for each enabled customer class.', { color: MID }));
+    children.push(P('Base charge and volume tier rates for each enabled customer class. Usage beyond a class’s final block continues at that final block’s rate.', { color: MID }));
     for (const cls of report.rateStructure) {
       children.push(H(cls.name, HeadingLevel.HEADING_2));
       children.push(buildTable(

@@ -88,7 +88,7 @@ function buildContext(study) {
     `- Debt-to-Income: Current ${fmt.pd(debtToIncome(curB, revCur.monthly), 'N/A')}, Proposed ${fmt.pd(debtToIncome(propB, revProp.monthly), 'N/A')} (benchmark < 45%)`,
     `- Base-Only Coverage: Current ${fmt.pd(baseCoverage(classes, false, curBT.total), 'N/A')}, Proposed ${fmt.pd(baseCoverage(classes, true, propBT.total), 'N/A')} (benchmark ≥ 100%)`,
     `- Cost per 1,000 gal: Current ${fmt.cd(costPer1000(curB, classes, false), 'N/A')}, Proposed ${fmt.cd(costPer1000(propB, classes, true), 'N/A')}`,
-    `- Bill at 5,000 gal: Current ${fmt.c(cost5000(classes, false))}, Proposed ${fmt.c(cost5000(classes, true))}`,
+    `- Bill at 5,000 gal: Current ${fmt.cd(cost5000(classes, false), 'N/A — no rates entered')}, Proposed ${fmt.cd(cost5000(classes, true), 'N/A — no rates entered')}`,
     `- Monthly Median Household Income (MHI): ${mhi ? fmt.c(mhi) : 'NOT ENTERED — flag as data gap'}`,
     ``,
     `TRUE COST OF SERVICE (annual)`,

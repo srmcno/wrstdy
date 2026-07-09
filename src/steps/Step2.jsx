@@ -3,10 +3,12 @@ import { defaultClasses, defaultTiers, defBudget } from '../lib/state.js';
 import {
   nv, classMonthlyIncome, totalRevenue, fmt, calcBill, calcHML, budgetTotal,
   hasUsageDistribution, classCustomers, classGallons, usageBrackets,
+  normalizeTiers, rateStructureComparison,
 } from '../lib/calc.js';
 import { F, $I } from '../components/atoms.jsx';
 import { TierTable } from '../components/TierTable.jsx';
 import { UsageTable } from '../components/UsageTable.jsx';
+import { ConfirmModal } from '../components/ConfirmModal.jsx';
 import { ask, hasApiKey, MODEL_HEAVY } from '../lib/ai.js';
 import { pushToast } from '../components/Toasts.jsx';
 
@@ -90,12 +92,15 @@ export function Step2({ study, onField }) {
     onField('classes', classes.map(c => c.id === id ? { ...c, enabled: !c.enabled } : c));
   };
 
-  const copyCurrentToProposed = (id) => {
-    if (!window.confirm('Overwrite the proposed rates for this class with the current rates?')) return;
+  // null | { kind: 'one', id } | { kind: 'all' } — pending Cur→Prop copy
+  // awaiting confirmation in the styled modal (matches the rest of the app;
+  // native window.confirm looked out of place and can be suppressed by the
+  // browser).
+  const [confirmCopy, setConfirmCopy] = useState(null);
+  const doCopyCurrentToProposed = (id) => {
     onField('classes', classes.map(c => c.id === id ? { ...c, prop: cloneSide(c.cur) } : c));
   };
-  const copyAllCurrentToProposed = () => {
-    if (!window.confirm('Overwrite proposed rates for ALL enabled classes with the current rates? You can then edit the deltas.')) return;
+  const doCopyAllCurrentToProposed = () => {
     onField('classes', classes.map(c => c.enabled ? { ...c, prop: cloneSide(c.cur) } : c));
   };
 
@@ -229,7 +234,7 @@ Propose new rates for this class only.`;
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
           <button className="btn b-out btn-sm" onClick={() => setShowImport(s => !s)} title="Bulk-paste classes from a spreadsheet">📋 Bulk Import</button>
           <button className="btn b-out btn-sm" onClick={() => exportClassesCsv(classes, study)} title="Download a CSV of all enabled customer classes and tier rates">↓ Export CSV</button>
-          <button className="btn b-out btn-sm" onClick={copyAllCurrentToProposed} title="Copy current rates to proposed for all enabled classes">⇉ Copy All Cur→Prop</button>
+          <button className="btn b-out btn-sm" onClick={() => setConfirmCopy({ kind: 'all' })} title="Copy current rates to proposed for all enabled classes">⇉ Copy All Cur→Prop</button>
           <button
             className="btn b-lime btn-sm"
             onClick={suggestRates}
@@ -244,6 +249,22 @@ Propose new rates for this class only.`;
         </div>
       </div>
 
+      {confirmCopy && (
+        <ConfirmModal
+          title={confirmCopy.kind === 'all' ? 'Copy current rates to proposed for ALL classes?' : 'Copy current rates to proposed?'}
+          message={confirmCopy.kind === 'all'
+            ? 'The proposed rates, customers, and gallons for every enabled class will be overwritten with the current values. You can then edit the deltas.'
+            : `"${sel?.name || 'This class'}" — the proposed rates, customers, and gallons will be overwritten with the current values.`}
+          confirmLabel="Copy Cur→Prop"
+          destructive={false}
+          onConfirm={() => {
+            if (confirmCopy.kind === 'all') doCopyAllCurrentToProposed();
+            else doCopyCurrentToProposed(confirmCopy.id);
+            setConfirmCopy(null);
+          }}
+          onCancel={() => setConfirmCopy(null)}
+        />
+      )}
       {aiErr && <div className="al al-e">{aiErr}</div>}
       {aiSuggestion && (
         <div className="card" style={{ borderLeft: '4px solid var(--lime)', background: 'var(--lime-pale)' }}>
@@ -298,7 +319,7 @@ Propose new rates for this class only.`;
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ width: 190, flexShrink: 0 }}>
           <div className="card" style={{ padding: 12 }}>
             <div className="sh" style={{ marginBottom: 10 }}>Customer Classes</div>
@@ -347,7 +368,7 @@ Propose new rates for this class only.`;
         </div>
 
         {sel && (
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 340 }}>
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <div style={{ fontSize: 14, color: 'var(--teal)' }}>{sel.name || classPlaceholder(sel)}</div>
@@ -355,7 +376,7 @@ Propose new rates for this class only.`;
                   {tab !== 'cmp' && (
                     <button
                       className="btn b-out btn-xs"
-                      onClick={() => copyCurrentToProposed(sel.id)}
+                      onClick={() => setConfirmCopy({ kind: 'one', id: sel.id })}
                       title="Copy this class's current rates to proposed"
                     >
                       ⇉ Cur→Prop
@@ -379,9 +400,43 @@ Propose new rates for this class only.`;
                     arr[i] = { ...arr[i], [k]: val };
                     updClass(sel.id, [sideKey, 'tiers'], arr);
                   }}
+                  onTierGal={(i, val) => {
+                    // The Compare row shows ONE breakpoint for both columns, so
+                    // editing it must move the block on BOTH sides in a single
+                    // update — patching only one side silently desyncs the
+                    // other and the row keeps displaying the current side's
+                    // value as if they matched.
+                    const patchSide = (s) => {
+                      const arr = (s?.tiers || []).map(t => ({ ...t }));
+                      while (arr.length <= i) arr.push({ gal: 1000 * (arr.length + 1), rate: '' });
+                      arr[i] = { ...arr[i], gal: val };
+                      return arr;
+                    };
+                    onField('classes', classes.map(c => c.id === sel.id
+                      ? { ...c, cur: { ...c.cur, tiers: patchSide(c.cur) }, prop: { ...c.prop, tiers: patchSide(c.prop) } }
+                      : c));
+                  }}
                 />
               ) : (
                 <>
+                  {tab === 'prop' && !distActive && nv(d.customers) === 0 && nv(sel.cur?.customers) > 0 && (
+                    <div className="al al-w" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span>
+                        <strong>No customers on the Proposed side yet</strong> — proposed revenue will read $0.00
+                        until customer and gallon counts are entered here too.
+                      </span>
+                      <button
+                        className="btn b-lime btn-sm"
+                        onClick={() => {
+                          onField('classes', classes.map(c => c.id === sel.id
+                            ? { ...c, prop: { ...c.prop, customers: c.cur?.customers || '', gallonsSold: c.cur?.gallonsSold || '' } }
+                            : c));
+                        }}
+                      >
+                        Copy customers & gallons from Current
+                      </button>
+                    </div>
+                  )}
                   <div className="g3" style={{ marginBottom: 14 }}>
                     <F
                       label="Number of Customers"
@@ -487,7 +542,7 @@ Propose new rates for this class only.`;
                     const ci = classMonthlyIncome(c, false);
                     const pi = classMonthlyIncome(c, true);
                     const chg = pi.monthly - ci.monthly;
-                    const pct = ci.monthly > 0 ? chg / ci.monthly : 0;
+                    const pct = ci.monthly > 0 ? chg / ci.monthly : null;
                     return (
                       <tr key={c.id}>
                         <td>
@@ -500,7 +555,7 @@ Propose new rates for this class only.`;
                         <td style={{ textAlign: 'right', color: chg >= 0 ? 'var(--lime-dim)' : 'var(--red)' }}>
                           {chg >= 0 ? '+' : ''}{fmt.c(chg)}
                         </td>
-                        <td style={{ textAlign: 'right' }}>{(pct * 100).toFixed(1)}%</td>
+                        <td style={{ textAlign: 'right' }}>{pct == null ? '—' : (pct * 100).toFixed(1) + '%'}</td>
                       </tr>
                     );
                   })}
@@ -557,7 +612,7 @@ const CmpInput = ({ value, onChange, money = false, step = '0.01' }) => (
   </div>
 );
 
-function CompareView({ cls, mhi, onUpd, onTier }) {
+function CompareView({ cls, mhi, onUpd, onTier, onTierGal }) {
   const hml = mhi ? calcHML({ prop: { minCharge: cls.prop?.minCharge, tiers: cls.prop?.tiers || [] } }, true, mhi) : null;
   const cur = cls.cur || {};
   const prop = cls.prop || {};
@@ -571,6 +626,15 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
       propRate: prop.tiers?.[i]?.rate,
     });
   }
+  // Index-paired editing is only honest when both sides have the same real
+  // breakpoints. Compare on the billed (normalized) tiers, not the raw
+  // padded slots — empty default rows shouldn't count as a mismatch.
+  const curNorm = normalizeTiers(cur.tiers);
+  const propNorm = normalizeTiers(prop.tiers);
+  const tiersAligned =
+    curNorm.length === 0 || propNorm.length === 0 ||
+    (curNorm.length === propNorm.length && curNorm.every((t, i) => t.gal === propNorm[i].gal));
+  const unionTiers = tiersAligned ? [] : (rateStructureComparison([{ ...cls, enabled: true }])[0]?.tiers || []);
   const ci = classMonthlyIncome(cls, false);
   const pi = classMonthlyIncome(cls, true);
   const billRow = (gal) => {
@@ -599,6 +663,7 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
     <div>
       <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 10 }}>
         Edit either column directly. The Δ column updates as you change values; the calculated income row recomputes from your latest inputs.
+        In the tier table, the Block (gal) breakpoint applies to <em>both</em> columns — to give one side different breakpoints, edit that side on its own tab.
         {distActive && <> Customer counts and gallons derive from this class's usage distribution (edit it on the Current/Proposed tab), so those rows are locked here.</>}
       </p>
       {hml && (
@@ -670,37 +735,74 @@ function CompareView({ cls, mhi, onUpd, onTier }) {
       </table>
 
       <div className="sh">Tier-by-Tier Rate Comparison</div>
-      <table className="dt" style={{ marginBottom: 14 }}>
-        <thead>
-          <tr>
-            <th>Block (gal)</th>
-            {colHeader('Current ($/1k)')}
-            {colHeader('Proposed ($/1k)')}
-            {colHeader('Δ')}
-          </tr>
-        </thead>
-        <tbody>
-          {tiers.map((t, i) => {
-            const d = nv(t.propRate) - nv(t.curRate);
-            return (
-              <tr key={i}>
-                <td style={{ width: 100 }}>
-                  <CmpInput value={t.gal} onChange={(v) => onTier('cur', i, 'gal', Number(v))} step="1000" />
-                </td>
-                <td style={{ width: 130 }}>
-                  <CmpInput value={t.curRate} onChange={(v) => onTier('cur', i, 'rate', v)} money step="0.01" />
-                </td>
-                <td style={{ width: 130 }}>
-                  <CmpInput value={t.propRate} onChange={(v) => onTier('prop', i, 'rate', v)} money step="0.01" />
-                </td>
-                <td style={{ textAlign: 'right', color: d > 0 ? 'var(--red)' : d < 0 ? 'var(--lime-dim)' : 'var(--mid)', fontFamily: 'monospace', fontSize: 11.5 }}>
-                  {d === 0 ? '—' : (d > 0 ? '+' : '') + fmt.r(d)}
-                </td>
+      {tiersAligned ? (
+        <table className="dt" style={{ marginBottom: 14 }}>
+          <thead>
+            <tr>
+              <th>Block (gal)</th>
+              {colHeader('Current ($/1k)')}
+              {colHeader('Proposed ($/1k)')}
+              {colHeader('Δ')}
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map((t, i) => {
+              const d = nv(t.propRate) - nv(t.curRate);
+              return (
+                <tr key={i}>
+                  <td style={{ width: 100 }}>
+                    <CmpInput value={t.gal} onChange={(v) => onTierGal(i, Number(v))} step="1000" />
+                  </td>
+                  <td style={{ width: 130 }}>
+                    <CmpInput value={t.curRate} onChange={(v) => onTier('cur', i, 'rate', v)} money step="0.01" />
+                  </td>
+                  <td style={{ width: 130 }}>
+                    <CmpInput value={t.propRate} onChange={(v) => onTier('prop', i, 'rate', v)} money step="0.01" />
+                  </td>
+                  <td style={{ textAlign: 'right', color: d > 0 ? 'var(--red)' : d < 0 ? 'var(--lime-dim)' : 'var(--mid)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                    {d === 0 ? '—' : (d > 0 ? '+' : '') + fmt.r(d)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        /* The sides use different breakpoints, so pairing rows by position
+           would compare unrelated gallon levels (e.g. show a 2,000-gal rate
+           against a 10,000-gal rate on one line). Show the union-of-
+           breakpoints comparison instead — each side's effective rate at
+           every real breakpoint — the same logic the Final Report uses. */
+        <div style={{ marginBottom: 14 }}>
+          <div className="al al-i" style={{ fontSize: 11.5, marginBottom: 8 }}>
+            Current and Proposed use <strong>different block breakpoints</strong>, so this comparison shows each
+            side's effective rate at every breakpoint (read-only). To change the blocks themselves, edit each
+            side on its own tab.
+          </div>
+          <table className="dt">
+            <thead>
+              <tr>
+                <th>Block</th>
+                {colHeader('Current ($/1k)')}
+                {colHeader('Proposed ($/1k)')}
+                {colHeader('Δ')}
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {unionTiers.map((t) => (
+                <tr key={t.gal}>
+                  <td>{t.label ? `${t.label} (up to ${fmt.n(t.gal)} gal)` : `Up to ${fmt.n(t.gal)} gal`}</td>
+                  <td style={{ textAlign: 'right' }}>{t.cur == null ? '—' : fmt.r(t.cur)}</td>
+                  <td style={{ textAlign: 'right' }}>{t.prop == null ? '—' : fmt.r(t.prop)}</td>
+                  <td style={{ textAlign: 'right', color: (t.delta ?? 0) > 0 ? 'var(--red)' : (t.delta ?? 0) < 0 ? 'var(--lime-dim)' : 'var(--mid)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                    {t.delta == null || t.delta === 0 ? '—' : (t.delta > 0 ? '+' : '') + fmt.r(t.delta)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="sh">Sample Customer Bills (calculated)</div>
       <table className="dt">

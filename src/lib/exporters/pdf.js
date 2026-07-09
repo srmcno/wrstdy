@@ -195,9 +195,19 @@ function renderMarkdownPDF(doc, report, sealDataUrl, blocks, startY) {
 
   const ensure = (need) => {
     if (state.y + need > CONTENT_BOTTOM) {
+      // drawHeader leaves the doc at 7pt light-gray normal — a page break in
+      // the middle of a paragraph, bold run, or list would continue in that
+      // style (and getTextWidth would mis-measure wraps). Save and restore
+      // the text state around the header.
+      const size = doc.getFontSize();
+      const color = doc.getTextColor();
+      const font = doc.getFont();
       doc.addPage();
       drawHeader(doc, report, sealDataUrl);
       state.y = CONTENT_TOP;
+      doc.setFontSize(size);
+      doc.setTextColor(color);
+      doc.setFont(font.fontName, font.fontStyle);
     }
   };
 
@@ -333,7 +343,7 @@ export async function exportPDF(report, filename) {
   const cells = [
     ['Cost / 1,000 gal (Cur to Prop)', `${fmt.cd(report.curCP1K, 'N/A')} – ${fmt.cd(report.propCP1K, 'N/A')}`],
     ['Operating Ratio (Cur to Prop)', `${fmt.ratio(report.curOR, 'N/A')} – ${fmt.ratio(report.propOR, 'N/A')}`],
-    ['5,000 gal Bill (Cur to Prop)', `${fmt.c(report.cost5kCur)} – ${fmt.c(report.cost5kProp)}`],
+    ['5,000 gal Bill (Cur to Prop)', `${fmt.cd(report.cost5kCur, 'N/A')} – ${fmt.cd(report.cost5kProp, 'N/A')}`],
     ['Affordability Index (Prop)', report.mhi ? fmt.pd(report.propAI, 'N/A') : 'MHI not entered'],
   ];
   cells.forEach((c, i) => {
@@ -486,7 +496,12 @@ export async function exportPDF(report, filename) {
     y = CONTENT_TOP;
     y = H1(pdfDoc, 'Projection Charts', y);
 
-    const chartSlot = (title, chart, height) => {
+    const chartSlot = (title, chart, maxHeight) => {
+      // Preserve the rendered PNG's aspect ratio (the DOCX path already does)
+      // — forcing a fixed slot height stretched charts 20–40% horizontally.
+      const height = chart && chart.width > 0
+        ? Math.min(maxHeight, (chart.height / chart.width) * CONTENT_W)
+        : maxHeight;
       y = ensureSpace(pdfDoc, report, sealDataUrl, y, height + 15);
       y = H2(pdfDoc, title, y);
       if (chart) {
@@ -497,9 +512,9 @@ export async function exportPDF(report, filename) {
         y += 6;
       }
     };
-    chartSlot('Fund Balance Over Five Years', fundChart, 80);
-    chartSlot('Revenue vs. Expenses', revExpChart, 70);
-    if (report.expCats.length > 0) chartSlot('Expense Breakdown by Category', breakdownChart, 70);
+    chartSlot('Fund Balance Over Five Years', fundChart, 96);
+    chartSlot('Revenue vs. Expenses', revExpChart, 84);
+    if (report.expCats.length > 0) chartSlot('Expense Breakdown by Category', breakdownChart, 84);
   }
 
   // ---- Operating Ratio + Affordability + DTI ----
@@ -536,7 +551,7 @@ export async function exportPDF(report, filename) {
       startY: y,
       head: [['', 'Current', 'Proposed', 'Note']],
       body: [
-        ['5,000 gal Bill', fmt.c(report.cost5kCur), fmt.c(report.cost5kProp), `Monthly MHI: ${fmt.c(report.mhi)}`],
+        ['5,000 gal Bill', fmt.cd(report.cost5kCur, 'N/A'), fmt.cd(report.cost5kProp, 'N/A'), `Monthly MHI: ${fmt.c(report.mhi)}`],
         ['Affordability Index', fmt.pd(report.curAI, 'N/A'), fmt.pd(report.propAI, 'N/A'), aiNote(report.propAI)],
       ],
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
@@ -591,7 +606,7 @@ export async function exportPDF(report, filename) {
       r.name, r.customers.toLocaleString(),
       fmt.c(r.cur), fmt.c(r.prop),
       (r.delta >= 0 ? '+' : '') + fmt.c(r.delta),
-      r.pct.toFixed(1) + '%',
+      r.pct == null ? '—' : r.pct.toFixed(1) + '%',
     ]),
     foot: [[
       'Total', '',
@@ -612,7 +627,7 @@ export async function exportPDF(report, filename) {
   if (report.rateStructure?.length) {
     y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
     y = H2(pdfDoc, 'Rate Structure: Current vs. Proposed', y);
-    y = P(pdfDoc, 'Base charge and volume tier rates for each enabled customer class.', y, { size: 9, color: MID });
+    y = P(pdfDoc, 'Base charge and volume tier rates for each enabled customer class. Usage beyond a class’s final block continues at that final block’s rate.', y, { size: 9, color: MID });
     y += 2;
     for (const cls of report.rateStructure) {
       y = ensureSpace(pdfDoc, report, sealDataUrl, y, 20 + cls.tiers.length * 7);

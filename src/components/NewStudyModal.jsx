@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { COUNTIES } from '../lib/constants.js';
+import { COUNTY_GROUPS } from '../lib/constants.js';
 import { newStudy } from '../lib/state.js';
 import { F } from './atoms.jsx';
 
@@ -66,7 +66,11 @@ export function NewStudyModal({ onClose, onCreate }) {
           <F label="County (optional)">
             <select className="sel" value={county} onChange={(e) => setCounty(e.target.value)}>
               <option value="">Select county...</option>
-              {COUNTIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {COUNTY_GROUPS.map(g => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.counties.map(c => <option key={c} value={c}>{c}</option>)}
+                </optgroup>
+              ))}
             </select>
           </F>
         </div>

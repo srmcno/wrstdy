@@ -245,6 +245,7 @@ export function Step8({ study, onField }) {
           <div className="sh">Rate Structure: Current vs. Proposed</div>
           <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 12 }}>
             Base charge and volume tier rates for each enabled customer class, current rates against proposed.
+            Usage beyond a class's final block continues at that final block's rate.
           </p>
           {rateStructure.map((r) => (
             <div key={r.name} style={{ marginBottom: 16 }}>
