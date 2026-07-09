@@ -7,7 +7,7 @@ import {
   classCustomers, classGallons, hasUsageDistribution,
   operatingRatio, affordabilityIndex, debtToIncome, baseCoverage,
   debtServiceCoverage, costPer1000, cost5000, trueCostOfService,
-  calc5Yr, calcHML,
+  calc5Yr, calcHML, billImpactForClass, billImpactExamples, rateStructureComparison,
 } from './calc.js';
 import { normalizeStudy } from './state.js';
 
@@ -336,4 +336,55 @@ test('calc5Yr matches legacy behavior when schedule and known items are blank', 
   const proj = calc5Yr(projClasses, budgetOf(2000, 500), budgetOf(2000, 500), fc);
   assert.ok(Math.abs(proj.propExpArr[1] - 30000 * 1.03) < 1e-9);
   assert.equal(proj.knownArr[0], 0);
+});
+
+// ─── Bill impact examples ────────────────────────────────────────────────────
+
+test('billImpactForClass bills current and proposed rates at each usage level', () => {
+  const cls = {
+    cur: { minCharge: '10', tiers: [{ gal: 1000, rate: '4' }, { gal: 5000, rate: '6' }] },
+    prop: { minCharge: '12', tiers: [{ gal: 1000, rate: '5' }, { gal: 5000, rate: '7' }] },
+  };
+  const rows = billImpactForClass(cls, [1000, 5000]);
+  assert.equal(rows[0].cur, calcBill('10', cls.cur.tiers, 1000));
+  assert.equal(rows[0].prop, calcBill('12', cls.prop.tiers, 1000));
+  assert.equal(rows[0].delta, rows[0].prop - rows[0].cur);
+  assert.equal(rows[1].gal, 5000);
+});
+
+test('billImpactExamples returns one row set per enabled class, skipping disabled ones', () => {
+  const classes = [
+    { id: 'res', name: 'Residential Water', enabled: true, cur: { minCharge: '10', tiers: [{ gal: 1000, rate: '4' }] }, prop: { minCharge: '10', tiers: [{ gal: 1000, rate: '4' }] } },
+    { id: 'com', name: 'Commercial', enabled: false, cur: { minCharge: '20', tiers: [{ gal: 1000, rate: '8' }] }, prop: { minCharge: '20', tiers: [{ gal: 1000, rate: '8' }] } },
+  ];
+  const out = billImpactExamples(classes, [1000]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].name, 'Residential Water');
+});
+
+// ─── Rate structure comparison ───────────────────────────────────────────────
+
+test('rateStructureComparison pairs current/proposed tiers and base charge per class', () => {
+  const classes = [{
+    id: 'res', name: 'Residential Water', enabled: true,
+    cur: { minCharge: '18', tiers: [{ gal: 1000, rate: '4.25', label: 'Lifeline' }, { gal: 2000, rate: '4.75' }] },
+    prop: { minCharge: '20', tiers: [{ gal: 1000, rate: '5.00' }] },
+  }];
+  const [row] = rateStructureComparison(classes);
+  assert.equal(row.name, 'Residential Water');
+  assert.equal(row.curMinCharge, 18);
+  assert.equal(row.propMinCharge, 20);
+  assert.equal(row.minChargeDelta, 2);
+  assert.equal(row.tiers.length, 2);
+  assert.equal(row.tiers[0].label, 'Lifeline');
+  assert.equal(row.tiers[0].cur, 4.25);
+  assert.equal(row.tiers[0].prop, 5);
+  // Proposed has no second tier — cur-only row still reports its current rate.
+  assert.equal(row.tiers[1].cur, 4.75);
+  assert.equal(row.tiers[1].prop, 0);
+});
+
+test('rateStructureComparison skips disabled classes', () => {
+  const classes = [{ id: 'who', name: 'Wholesale', enabled: false, cur: {}, prop: {} }];
+  assert.deepEqual(rateStructureComparison(classes), []);
 });

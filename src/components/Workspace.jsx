@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { STEPS } from '../lib/constants.js';
 import { fmt } from '../lib/calc.js';
 import { statusMeta } from '../lib/status.js';
+import { stepCompletion, needsBackupReminder } from '../lib/progress.js';
 import { ConfirmModal } from './ConfirmModal.jsx';
 
 // Compact "saved 3s ago" / "saved just now" indicator that re-renders every 10s.
@@ -34,7 +35,7 @@ import { Step6 } from '../steps/Step6.jsx';
 import { Step7 } from '../steps/Step7.jsx';
 import { Step8 } from '../steps/Step8.jsx';
 
-export function Workspace({ study, onUpdate, onDelete }) {
+export function Workspace({ study, onUpdate, onDelete, onExport }) {
   const [step, setStep] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // field('foo', v) sets a single key.
@@ -54,6 +55,8 @@ export function Workspace({ study, onUpdate, onDelete }) {
     };
     onUpdate(study.id, fullPatch);
   };
+  const completion = stepCompletion(study);
+  const doneCount = completion.filter(Boolean).length;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="ws-bar no-print">
@@ -67,6 +70,16 @@ export function Workspace({ study, onUpdate, onDelete }) {
           </div>
         </div>
         <SavedAgo iso={study.updatedAt} />
+        {needsBackupReminder(study) && (
+          <button
+            className="btn b-out btn-sm"
+            onClick={() => onExport?.(study.id)}
+            title="This study lives only in this browser's storage. Export a .json backup regularly."
+            style={{ color: '#92400e', borderColor: '#fde68a', background: '#fffbeb' }}
+          >
+            ⚠ Not backed up — Export
+          </button>
+        )}
         <span className={'bs ' + statusMeta(study.status).badgeClass}>
           {statusMeta(study.status).label}
         </span>
@@ -98,10 +111,22 @@ export function Workspace({ study, onUpdate, onDelete }) {
       )}
       <div className="tabs no-print">
         {STEPS.map(s => (
-          <button key={s.id} className={'tab' + (step === s.id ? ' on' : '')} onClick={() => setStep(s.id)}>
+          <button
+            key={s.id}
+            className={'tab' + (step === s.id ? ' on' : '')}
+            onClick={() => setStep(s.id)}
+            title={completion[s.id] ? 'Has data entered' : 'No data entered yet'}
+          >
+            {completion[s.id] && <span className="tab-done" aria-hidden="true">✓</span>}
             {s.l}
           </button>
         ))}
+      </div>
+      <div className="ws-progress no-print" aria-hidden="true">
+        <div className="ws-progress-track">
+          <div className="ws-progress-fill" style={{ width: `${(doneCount / STEPS.length) * 100}%` }} />
+        </div>
+        <span className="ws-progress-lbl">{doneCount} of {STEPS.length} steps have data</span>
       </div>
       <div className="ws-sc">
         {step === 0 && <Step1 study={study} onField={field} />}

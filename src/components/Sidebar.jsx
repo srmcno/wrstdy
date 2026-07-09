@@ -1,5 +1,6 @@
 import { fmt } from '../lib/calc.js';
 import { statusMeta } from '../lib/status.js';
+import { ENGINEERS_LIST_URL, ENGINEERS_LIST_UPDATED } from '../lib/constants.js';
 
 export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, onExport, onHome, mobileOpen }) {
   return (
@@ -50,6 +51,27 @@ export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, o
           {activeId && <button className="btn b-ghost btn-sm" onClick={() => onExport(activeId)}>↓ Export Study (.json)</button>}
           {studies.length > 1 && <button className="btn b-ghost btn-sm" onClick={() => onExport(null)}>↓ Export All</button>}
         </div>
+        <div className="sb-lb" style={{ marginTop: 14, marginBottom: 7 }}>Resources</div>
+        {ENGINEERS_LIST_URL ? (
+          <a
+            className="btn b-ghost btn-sm btn-fw"
+            href={ENGINEERS_LIST_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
+          >
+            📋 Approved Engineers List
+            {ENGINEERS_LIST_UPDATED && <span style={{ display: 'block', fontSize: 9, opacity: .7, marginTop: 1 }}>Updated {ENGINEERS_LIST_UPDATED}</span>}
+          </a>
+        ) : (
+          <div
+            className="btn b-ghost btn-sm btn-fw"
+            title="No link configured yet — set VITE_ENGINEERS_LIST_URL when the current list is available."
+            style={{ opacity: .55, cursor: 'default', textAlign: 'center' }}
+          >
+            📋 Approved Engineers List — pending
+          </div>
+        )}
       </div>
     </nav>
   );

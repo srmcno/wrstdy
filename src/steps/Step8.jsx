@@ -5,7 +5,7 @@ import { VER } from '../lib/constants.js';
 import {
   budgetTotal, totalRevenue, costPer1000, calc5Yr, operatingRatio,
   affordabilityIndex, debtToIncome, debtServiceCoverage, trueCostOfService,
-  hasUsageDistribution, nv, fmt
+  hasUsageDistribution, nv, fmt, billImpactExamples, rateStructureComparison
 } from '../lib/calc.js';
 import { buildReport, safeFileName, revenueBasisText } from '../lib/exporters/data.js';
 import { statusMeta } from '../lib/status.js';
@@ -39,6 +39,8 @@ export function Step8({ study, onField }) {
   const curLR = nv((study.curBudget || defBudget()).oth?.longRange);
   const propLR = nv((study.propBudget || defBudget()).oth?.longRange);
   const proj = calc5Yr(classes, study.curBudget || defBudget(), study.propBudget || defBudget(), study.forecast || {});
+  const rateStructure = rateStructureComparison(classes);
+  const billImpact = billImpactExamples(classes);
   const expBase = propBT.total * 12;
   const infRaw = study.forecast?.inflationRate;
   const fcInflation = String(infRaw ?? '').trim() === '' ? '3' : String(infRaw);
@@ -238,6 +240,72 @@ export function Step8({ study, onField }) {
           </tbody>
         </table>
       </div>
+      {rateStructure.length > 0 && (
+        <div className="card">
+          <div className="sh">Rate Structure: Current vs. Proposed</div>
+          <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 12 }}>
+            Base charge and volume tier rates for each enabled customer class, current rates against proposed.
+          </p>
+          {rateStructure.map((r) => (
+            <div key={r.name} style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--teal)', marginBottom: 6, fontWeight: 600 }}>{r.name}</div>
+              <table className="dt">
+                <thead>
+                  <tr><th>Item</th><th style={{ textAlign: 'right' }}>Current</th><th style={{ textAlign: 'right' }}>Proposed</th><th style={{ textAlign: 'right' }}>Δ</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Base / Minimum Charge</td>
+                    <td style={{ textAlign: 'right' }}>{fmt.c(r.curMinCharge)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt.c(r.propMinCharge)}</td>
+                    <td style={{ textAlign: 'right' }}>{(r.minChargeDelta >= 0 ? '+' : '') + fmt.c(r.minChargeDelta)}</td>
+                  </tr>
+                  {r.tiers.map((t, i) => (
+                    <tr key={i}>
+                      <td>{t.label ? `${t.label} (up to ${fmt.n(t.gal)} gal)` : `Up to ${fmt.n(t.gal)} gal`}</td>
+                      <td style={{ textAlign: 'right' }}>{fmt.r(t.cur)}/1k</td>
+                      <td style={{ textAlign: 'right' }}>{fmt.r(t.prop)}/1k</td>
+                      <td style={{ textAlign: 'right' }}>{(t.delta >= 0 ? '+' : '') + fmt.r(t.delta)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+      {billImpact.length > 0 && (
+        <div className="card">
+          <div className="sh">Customer Bill Impact Examples</div>
+          <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 12 }}>
+            What the proposed rates mean for an individual bill at a few representative monthly usage levels —
+            useful for board discussion and public communication.
+          </p>
+          {billImpact.map((cls) => (
+            <div key={cls.name} style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--teal)', marginBottom: 6, fontWeight: 600 }}>{cls.name}</div>
+              <table className="dt">
+                <thead>
+                  <tr><th>Monthly Usage</th><th style={{ textAlign: 'right' }}>Current Bill</th><th style={{ textAlign: 'right' }}>Proposed Bill</th><th style={{ textAlign: 'right' }}>Increase</th></tr>
+                </thead>
+                <tbody>
+                  {cls.rows.map((row) => (
+                    <tr key={row.gal}>
+                      <td>{fmt.n(row.gal)} gallons</td>
+                      <td style={{ textAlign: 'right' }}>{fmt.c(row.cur)}</td>
+                      <td style={{ textAlign: 'right' }}>{fmt.c(row.prop)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {(row.delta >= 0 ? '+' : '') + fmt.c(row.delta)}
+                        {row.pct != null ? ` (${(row.pct >= 0 ? '+' : '') + (row.pct * 100).toFixed(1)}%)` : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="card">
         <div className="sh">Five Year Outlook</div>
         <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 12 }}>

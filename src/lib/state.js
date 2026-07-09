@@ -150,6 +150,11 @@ export function normalizeStudy(study = {}) {
     aiAnalysis: { content: '', generatedAt: '', ...(safeStudy.aiAnalysis || {}) },
     aiHistory: Array.isArray(safeStudy.aiHistory) ? safeStudy.aiHistory : [],
     reportNotes: safeStudy.reportNotes || '',
+    // Set when "Export Study (.json)" is used for this study — drives a
+    // reminder banner when real data exists but hasn't been backed up since
+    // (localStorage is this tool's only persistence; clearing browser data
+    // or switching machines without exporting first loses the study).
+    lastExportedAt: safeStudy.lastExportedAt || null,
   };
 }
 

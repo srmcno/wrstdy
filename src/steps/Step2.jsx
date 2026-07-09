@@ -101,6 +101,18 @@ export function Step2({ study, onField }) {
 
   // CSV bulk import: name,customers,gallons,minCharge[,rate1,rate2...]
   // Mapped to first N enabled classes (or matched by name).
+  // Each rate cell can be a plain number (legacy behavior — mapped to the
+  // 1,000/2,000/3,000... breakpoint at its position) or a "gal:rate" pair
+  // (e.g. "500:4.00") for systems whose blocks don't land on round
+  // 1,000-gallon multiples — sub-1,000 lifeline blocks, 2,500/7,500 splits, etc.
+  const parseTierCell = (cell, i) => {
+    const s = String(cell ?? '').trim();
+    const colonIdx = s.indexOf(':');
+    if (colonIdx > -1) {
+      return { gal: nv(s.slice(0, colonIdx)), rate: s.slice(colonIdx + 1).trim() };
+    }
+    return { gal: 1000 * (i + 1), rate: s };
+  };
   const applyImport = () => {
     const rows = importText.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
     if (rows.length === 0) { setShowImport(false); return; }
@@ -120,7 +132,7 @@ export function Step2({ study, onField }) {
         gallonsSold: gallons || '',
         minCharge: minCharge || '',
         tiers: rates.length > 0
-          ? rates.map((r, i) => ({ gal: 1000 * (i + 1), rate: r || '' }))
+          ? rates.map(parseTierCell).filter(t => t.gal > 0)
           : (target.cur.tiers && target.cur.tiers.length ? target.cur.tiers.map(t => ({ ...t })) : defaultTiers()),
       };
       target.cur = side;
@@ -265,12 +277,18 @@ Propose new rates for this class only.`;
             <code style={{ background: '#fff', padding: '1px 5px', borderRadius: 3 }}>name, customers, gallonsSold, minCharge, tier1Rate, tier2Rate, ...</code>
             {' '}Matches existing classes by name prefix; otherwise fills the first disabled slot. Both Current and Proposed are populated; edit Proposed afterward.
           </p>
+          <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 8 }}>
+            Each rate column defaults to a 1,000-gallon breakpoint at its position (1st column = up to 1,000 gal,
+            2nd = up to 2,000 gal, ...). For custom breakpoints — sub-1,000-gallon blocks, or blocks that don't land
+            on round 1,000s — write <code style={{ background: '#fff', padding: '1px 5px', borderRadius: 3 }}>gallons:rate</code>{' '}
+            instead, e.g. <code style={{ background: '#fff', padding: '1px 5px', borderRadius: 3 }}>500:4.00</code>.
+          </p>
           <textarea
             className="txa"
             rows={5}
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder={"Residential, 240, 1800000, 18.00, 4.50, 5.00, 5.50, 6.00, 6.50, 7.00\nCommercial, 18, 540000, 25.00, 5.00, 5.50, 6.00, 6.50, 7.00, 7.50"}
+            placeholder={"Residential, 240, 1800000, 18.00, 500:4.00, 1500:4.75, 5.50, 6.00, 6.50, 7.00\nCommercial, 18, 540000, 25.00, 5.00, 5.50, 6.00, 6.50, 7.00, 7.50"}
             style={{ fontFamily: 'monospace', fontSize: 12 }}
           />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>

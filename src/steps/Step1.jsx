@@ -190,7 +190,7 @@ State: Oklahoma`;
         </div>
         <div className="g3">
           <F label="Population Served">
-            <input className="inp" type="number" value={si.populationServed} onChange={(e) => usi('populationServed', e.target.value)} placeholder="450" />
+            <input className="inp" type="number" min="0" step="1" value={si.populationServed} onChange={(e) => usi('populationServed', e.target.value)} placeholder="450" />
           </F>
           <F label="Source Type">
             <select className="sel" value={si.sourceType} onChange={(e) => usi('sourceType', e.target.value)}>

@@ -6,7 +6,8 @@ import { scenarioForClasses } from '../scenarios.js';
 import {
   budgetTotal, totalRevenue, classMonthlyIncome, classCustomers, hasUsageDistribution,
   affordabilityIndex, debtToIncome, baseCoverage, operatingRatio, debtServiceCoverage,
-  costPer1000, cost5000, calc5Yr, trueCostOfService, nv, fmt
+  costPer1000, cost5000, calc5Yr, trueCostOfService, nv, fmt,
+  billImpactExamples, rateStructureComparison,
 } from '../calc.js';
 
 // Shared wording for the data-quality / liability statement that appears in
@@ -173,6 +174,8 @@ export function buildReport(study) {
     propLR: nv(propB.oth?.longRange),
     scorecard,
     classRows,
+    billImpact: billImpactExamples(classes),
+    rateStructure: rateStructureComparison(classes),
     expCats,
     fiveYearOutlook,
     scenario: {
