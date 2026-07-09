@@ -378,6 +378,14 @@ test('billImpactForClass treats a genuine $0 base charge with real tier rates as
   assert.equal(row.prop, 4);
 });
 
+test('billImpactForClass treats a padded gal:0 slot with a leftover rate as invalid, not as real data', () => {
+  const cls = { cur: { minCharge: '', tiers: [{ gal: 0, rate: '5' }] }, prop: { minCharge: '10', tiers: [{ gal: 1000, rate: '4' }] } };
+  const [row] = billImpactForClass(cls, [1000]);
+  assert.equal(row.cur, null);
+  assert.equal(row.prop, calcBill('10', cls.prop.tiers, 1000));
+  assert.equal(row.delta, null);
+});
+
 // ─── Rate structure comparison ───────────────────────────────────────────────
 
 test('rateStructureComparison pairs current/proposed tiers and base charge per class', () => {
@@ -440,6 +448,23 @@ test('rateStructureComparison ignores padded/invalid tier slots (gal: 0 from a c
   assert.equal(row.tiers[1].cur, 5);
   // Proposed has only one real tier — the second row falls back to it.
   assert.equal(row.tiers[1].prop, 5);
+});
+
+test('rateStructureComparison treats a padded gal:0 slot with a leftover rate as invalid, not as real data', () => {
+  // The slot never survives normalizeTiers (gal <= 0 is dropped), so a side
+  // whose only "rate" lives on that phantom slot must still read as having no
+  // real data — checking raw tiers for "has data" would wrongly report a
+  // $0.00 base charge instead of N/A.
+  const classes = [{
+    id: 'res', name: 'Residential Water', enabled: true,
+    cur: { minCharge: '', tiers: [{ gal: 0, rate: '5' }] },
+    prop: { minCharge: '12', tiers: [{ gal: 1000, rate: '5' }] },
+  }];
+  const [row] = rateStructureComparison(classes);
+  assert.equal(row.curMinCharge, null);
+  assert.equal(row.tiers.length, 1);
+  assert.equal(row.tiers[0].cur, null);
+  assert.equal(row.tiers[0].prop, 5);
 });
 
 test('rateStructureComparison compares breakpoints by their own gallon value, not by array index, when the two sides diverge', () => {

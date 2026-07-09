@@ -163,19 +163,25 @@ export const BILL_IMPACT_LEVELS = [1000, 2000, 5000, 10000];
 // True once a rate side has at least one real, non-zero value entered — a
 // base charge or a tier rate. Used to tell "nothing entered yet" (report N/A)
 // apart from "genuinely a $0 charge" (report $0.00), the same distinction the
-// rest of this module draws for every other metric.
-function sideHasRates(side = {}) {
-  return nv(side?.minCharge) > 0 || (Array.isArray(side?.tiers) && side.tiers.some(t => nv(t?.rate) > 0));
+// rest of this module draws for every other metric. Takes already-normalized
+// tiers (see normalizeTiers) — checking raw, unnormalized tiers would let a
+// padded/invalid slot (e.g. a cleared "Block up to (gal)" field that still
+// has a leftover rate typed in) make an otherwise-empty side look populated,
+// even though that slot never survives into the tiers actually billed/shown.
+function sideHasRates(minCharge, normalizedTiers) {
+  return nv(minCharge) > 0 || normalizedTiers.some(t => t.rate > 0);
 }
 
 export function billImpactForClass(cls = {}, levels = BILL_IMPACT_LEVELS) {
   const curSide = cls?.cur || {};
   const propSide = cls?.prop || {};
-  const curHasData = sideHasRates(curSide);
-  const propHasData = sideHasRates(propSide);
+  const curTiers = normalizeTiers(curSide.tiers);
+  const propTiers = normalizeTiers(propSide.tiers);
+  const curHasData = sideHasRates(curSide.minCharge, curTiers);
+  const propHasData = sideHasRates(propSide.minCharge, propTiers);
   return levels.map(gal => {
-    const cur = curHasData ? calcBill(curSide.minCharge, curSide.tiers || [], gal) : null;
-    const prop = propHasData ? calcBill(propSide.minCharge, propSide.tiers || [], gal) : null;
+    const cur = curHasData ? calcBill(curSide.minCharge, curTiers, gal) : null;
+    const prop = propHasData ? calcBill(propSide.minCharge, propTiers, gal) : null;
     const delta = cur != null && prop != null ? prop - cur : null;
     return { gal, cur, prop, delta, pct: delta != null && cur > 0 ? delta / cur : null };
   });
@@ -203,8 +209,8 @@ export function rateStructureComparison(classes = []) {
       // never shows a bogus "Up to 0 gal" row or an out-of-order tier list.
       const curTiers = normalizeTiers(c.cur?.tiers);
       const propTiers = normalizeTiers(c.prop?.tiers);
-      const curHasData = sideHasRates(c.cur);
-      const propHasData = sideHasRates(c.prop);
+      const curHasData = sideHasRates(c.cur?.minCharge, curTiers);
+      const propHasData = sideHasRates(c.prop?.minCharge, propTiers);
       // A side's own rate for usage AT a given gallon breakpoint — the first
       // of that side's tiers whose breakpoint covers it, or its final tier's
       // rate if the breakpoint exceeds every configured block (calcBill's
