@@ -153,6 +153,58 @@ export function affordabilityIndex(classes, isProposed, mhi) {
   return m > 0 ? c5 / m : null;
 }
 
+// ─── Customer bill impact examples ──────────────────────────────────────────
+// Board/public-facing "what does my bill look like" table: current vs.
+// proposed bill at a handful of representative monthly usage levels, for
+// every enabled class (not just Residential) — a system with a separate
+// Sewer class, for example, gets its own row set.
+export const BILL_IMPACT_LEVELS = [1000, 2000, 5000, 10000];
+
+export function billImpactForClass(cls = {}, levels = BILL_IMPACT_LEVELS) {
+  const curSide = cls?.cur || {};
+  const propSide = cls?.prop || {};
+  return levels.map(gal => {
+    const cur = calcBill(curSide.minCharge, curSide.tiers || [], gal);
+    const prop = calcBill(propSide.minCharge, propSide.tiers || [], gal);
+    return { gal, cur, prop, delta: prop - cur, pct: cur > 0 ? (prop - cur) / cur : null };
+  });
+}
+
+export function billImpactExamples(classes = [], levels = BILL_IMPACT_LEVELS) {
+  return (Array.isArray(classes) ? classes : [])
+    .filter(c => c?.enabled)
+    .map(c => ({ name: c.name || c.id, rows: billImpactForClass(c, levels) }));
+}
+
+// ─── Rate structure comparison ──────────────────────────────────────────────
+// Current vs. proposed base charge and tier-by-tier rate, per enabled class —
+// the same comparison Step 2's "Compare" tab shows on screen, computed once
+// here so the Final Report and PDF/DOCX exports can carry it too instead of
+// only the aggregate per-class revenue total.
+export function rateStructureComparison(classes = []) {
+  return (Array.isArray(classes) ? classes : [])
+    .filter(c => c?.enabled)
+    .map(c => {
+      const curTiers = Array.isArray(c.cur?.tiers) ? c.cur.tiers : [];
+      const propTiers = Array.isArray(c.prop?.tiers) ? c.prop.tiers : [];
+      const rowCount = Math.max(curTiers.length, propTiers.length);
+      const tiers = Array.from({ length: rowCount }, (_, i) => {
+        const gal = propTiers[i]?.gal ?? curTiers[i]?.gal ?? null;
+        const label = propTiers[i]?.label || curTiers[i]?.label || '';
+        const cur = nv(curTiers[i]?.rate);
+        const prop = nv(propTiers[i]?.rate);
+        return { gal, label, cur, prop, delta: prop - cur };
+      });
+      const curMinCharge = nv(c.cur?.minCharge);
+      const propMinCharge = nv(c.prop?.minCharge);
+      return {
+        name: c.name || c.id,
+        curMinCharge, propMinCharge, minChargeDelta: propMinCharge - curMinCharge,
+        tiers,
+      };
+    });
+}
+
 export function operatingRatio(rev, expTotal) {
   return expTotal > 0 ? rev / expTotal : null;
 }

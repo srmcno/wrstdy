@@ -346,6 +346,60 @@ export async function exportDocx(report, filename, sealUint8) {
   ));
   children.push(P('In this revenue table, green indicates additional revenue to the system (an increase in the $ Δ column).', { color: DIM, italic: true, size: 18 }));
 
+  // Rate structure: current vs. proposed, per class
+  if (report.rateStructure?.length) {
+    children.push(H('Rate Structure: Current vs. Proposed'));
+    children.push(P('Base charge and volume tier rates for each enabled customer class.', { color: MID }));
+    for (const cls of report.rateStructure) {
+      children.push(H(cls.name, HeadingLevel.HEADING_2));
+      children.push(buildTable(
+        [
+          { text: 'Item' }, { text: 'Current', align: AlignmentType.RIGHT },
+          { text: 'Proposed', align: AlignmentType.RIGHT }, { text: 'Δ', align: AlignmentType.RIGHT },
+        ],
+        [
+          [
+            'Base / Minimum Charge',
+            { text: fmt.c(cls.curMinCharge), align: AlignmentType.RIGHT },
+            { text: fmt.c(cls.propMinCharge), align: AlignmentType.RIGHT },
+            { text: (cls.minChargeDelta >= 0 ? '+' : '') + fmt.c(cls.minChargeDelta), align: AlignmentType.RIGHT },
+          ],
+          ...cls.tiers.map(t => [
+            t.label ? `${t.label} (up to ${fmt.n(t.gal)} gal)` : `Up to ${fmt.n(t.gal)} gal`,
+            { text: `${fmt.r(t.cur)}/1k`, align: AlignmentType.RIGHT },
+            { text: `${fmt.r(t.prop)}/1k`, align: AlignmentType.RIGHT },
+            { text: (t.delta >= 0 ? '+' : '') + `${fmt.r(t.delta)}`, align: AlignmentType.RIGHT },
+          ]),
+        ],
+      ));
+    }
+  }
+
+  // Customer bill impact examples
+  if (report.billImpact?.length) {
+    children.push(H('Customer Bill Impact Examples'));
+    children.push(P('What the proposed rates mean for an individual bill at representative monthly usage levels — useful for board discussion and public communication.', { color: MID }));
+    for (const cls of report.billImpact) {
+      children.push(H(cls.name, HeadingLevel.HEADING_2));
+      children.push(buildTable(
+        [
+          { text: 'Monthly Usage' }, { text: 'Current Bill', align: AlignmentType.RIGHT },
+          { text: 'Proposed Bill', align: AlignmentType.RIGHT }, { text: 'Increase', align: AlignmentType.RIGHT },
+        ],
+        cls.rows.map(r => [
+          `${fmt.n(r.gal)} gallons`,
+          { text: fmt.c(r.cur), align: AlignmentType.RIGHT },
+          { text: fmt.c(r.prop), align: AlignmentType.RIGHT },
+          {
+            text: (r.delta >= 0 ? '+' : '') + fmt.c(r.delta) + (r.pct != null ? ` (${(r.pct >= 0 ? '+' : '') + (r.pct * 100).toFixed(1)}%)` : ''),
+            align: AlignmentType.RIGHT,
+            color: r.delta >= 0 ? GREEN_DARK : RED,
+          },
+        ]),
+      ));
+    }
+  }
+
   if (report.scenario?.rows?.length) {
     children.push(H(`Active Scenario: ${report.scenario.label || 'Custom'}`, HeadingLevel.HEADING_2));
     children.push(P(`Scenario monthly revenue is ${fmt.c(report.scenario.monthlyRevenue)}, which is ${(report.scenario.vsProposed >= 0 ? '+' : '') + fmt.c(report.scenario.vsProposed)} versus proposed rates. Net monthly surplus / (deficit) after proposed expenses is ${(report.scenario.netMonthly >= 0 ? '+' : '') + fmt.c(report.scenario.netMonthly)}.`, { color: MID }));

@@ -602,6 +602,55 @@ export async function exportPDF(report, filename) {
   }));
   y = pdfDoc.lastAutoTable.finalY + 10;
 
+  // ---- Rate structure: current vs. proposed, per class ----
+  if (report.rateStructure?.length) {
+    y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
+    y = H2(pdfDoc, 'Rate Structure: Current vs. Proposed', y);
+    y = P(pdfDoc, 'Base charge and volume tier rates for each enabled customer class.', y, { size: 9, color: MID });
+    y += 2;
+    for (const cls of report.rateStructure) {
+      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 20 + cls.tiers.length * 7);
+      y = H2(pdfDoc, cls.name, y);
+      autoTable(pdfDoc, tableBase(report, sealDataUrl, {
+        startY: y,
+        head: [['Item', 'Current', 'Proposed', 'Δ']],
+        body: [
+          ['Base / Minimum Charge', fmt.c(cls.curMinCharge), fmt.c(cls.propMinCharge),
+            (cls.minChargeDelta >= 0 ? '+' : '') + fmt.c(cls.minChargeDelta)],
+          ...cls.tiers.map(t => [
+            (t.label ? `${t.label} (up to ${fmt.n(t.gal)} gal)` : `Up to ${fmt.n(t.gal)} gal`),
+            `${fmt.r(t.cur)}/1k`, `${fmt.r(t.prop)}/1k`,
+            (t.delta >= 0 ? '+' : '') + `${fmt.r(t.delta)}`,
+          ]),
+        ],
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+      }));
+      y = pdfDoc.lastAutoTable.finalY + 6;
+    }
+  }
+
+  // ---- Customer bill impact examples ----
+  if (report.billImpact?.length) {
+    y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
+    y = H2(pdfDoc, 'Customer Bill Impact Examples', y);
+    y = P(pdfDoc, 'What the proposed rates mean for an individual bill at representative monthly usage levels.', y, { size: 9, color: MID });
+    y += 2;
+    for (const cls of report.billImpact) {
+      y = ensureSpace(pdfDoc, report, sealDataUrl, y, 20 + cls.rows.length * 7);
+      y = H2(pdfDoc, cls.name, y);
+      autoTable(pdfDoc, tableBase(report, sealDataUrl, {
+        startY: y,
+        head: [['Monthly Usage', 'Current Bill', 'Proposed Bill', 'Increase']],
+        body: cls.rows.map(r => [
+          `${fmt.n(r.gal)} gallons`, fmt.c(r.cur), fmt.c(r.prop),
+          (r.delta >= 0 ? '+' : '') + fmt.c(r.delta) + (r.pct != null ? ` (${(r.pct >= 0 ? '+' : '') + (r.pct * 100).toFixed(1)}%)` : ''),
+        ]),
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+      }));
+      y = pdfDoc.lastAutoTable.finalY + 6;
+    }
+  }
+
   if (report.scenario?.rows?.length) {
     y = ensureSpace(pdfDoc, report, sealDataUrl, y, 60);
     y = H2(pdfDoc, `Active Scenario: ${report.scenario.label || 'Custom'}`, y);

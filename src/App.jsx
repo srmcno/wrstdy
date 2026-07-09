@@ -105,6 +105,7 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
     pushToast(`Exported ${filename}`);
+    if (s) update(s.id, { lastExportedAt: new Date().toISOString() });
   }
 
   function importStudy(e) {
@@ -174,7 +175,7 @@ export default function App() {
             /* key: reset the step tabs (and other per-study UI state) when
                switching studies, so opening a different study doesn't land on
                whatever step the previous one was showing. */
-            ? <Workspace key={active.id} study={active} onUpdate={update} onDelete={del} />
+            ? <Workspace key={active.id} study={active} onUpdate={update} onDelete={del} onExport={exportStudy} />
             : <Dashboard studies={studies} onSelect={setActiveId} onCreate={() => setShowNew(true)} onLoadSample={create} onCreateFromKnown={createFromKnown} />
           }
         </main>
