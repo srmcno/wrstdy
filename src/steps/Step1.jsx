@@ -290,7 +290,10 @@ State: Oklahoma`;
           // Affordability Index 12× and flips the USDA-grant story. No real
           // service-area monthly MHI approaches $10k, so treat that as the
           // "this is an annual figure" tell and offer the ÷12 fix.
-          const raw = parseFloat(dm.medianMonthlyHHI);
+          // Strip "$" and "," first — the value can arrive as a formatted
+          // string via JSON import or AI estimate, where "45,000" would
+          // parse as 45 and silently skip this warning.
+          const raw = parseFloat(String(dm.medianMonthlyHHI || '').replace(/[$,]/g, ''));
           if (!(raw >= 10000)) return null;
           const monthly = Math.round(raw / 12);
           return (

@@ -632,8 +632,7 @@ function CompareView({ cls, mhi, onUpd, onTier, onTierGal }) {
   const curNorm = normalizeTiers(cur.tiers);
   const propNorm = normalizeTiers(prop.tiers);
   const tiersAligned =
-    curNorm.length === 0 || propNorm.length === 0 ||
-    (curNorm.length === propNorm.length && curNorm.every((t, i) => t.gal === propNorm[i].gal));
+    curNorm.length === propNorm.length && curNorm.every((t, i) => t.gal === propNorm[i].gal);
   const unionTiers = tiersAligned ? [] : (rateStructureComparison([{ ...cls, enabled: true }])[0]?.tiers || []);
   const ci = classMonthlyIncome(cls, false);
   const pi = classMonthlyIncome(cls, true);

@@ -501,8 +501,10 @@ export async function exportPDF(report, filename) {
       // — forcing a fixed slot height stretched charts 20–40% horizontally.
       const height = chart && chart.width > 0
         ? Math.min(maxHeight, (chart.height / chart.width) * CONTENT_W)
-        : maxHeight;
-      y = ensureSpace(pdfDoc, report, sealDataUrl, y, height + 15);
+        : 0;
+      // A missing chart renders one placeholder line — don't reserve a full
+      // chart slot for it, or we page-break onto near-empty pages.
+      y = ensureSpace(pdfDoc, report, sealDataUrl, y, chart ? height + 15 : 20);
       y = H2(pdfDoc, title, y);
       if (chart) {
         pdfDoc.addImage(chart.dataUrl, 'PNG', MARGIN_L, y, CONTENT_W, height);
