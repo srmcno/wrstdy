@@ -139,18 +139,22 @@ export function costPer1000(budget, classes = [], isProposed) {
   return gal > 0 ? (exp / (gal / 1000)) : null;
 }
 
+// Null when there is no enabled class or the reference class has no rates
+// entered yet — "no data" must read N/A downstream, not a $0.00 bill that
+// makes an empty study score as perfectly affordable.
 export function cost5000(classes = [], isProposed) {
   const safeClasses = Array.isArray(classes) ? classes : [];
   const res = safeClasses.find(c => c?.enabled && c?.id === 'res') || safeClasses.find(c => c?.enabled);
-  if (!res) return 0;
+  if (!res) return null;
   const d = (isProposed ? res.prop : res.cur) || {};
+  if (!sideHasRates(d.minCharge, normalizeTiers(d.tiers))) return null;
   return calcBill(d.minCharge, d.tiers || [], 5000);
 }
 
 export function affordabilityIndex(classes, isProposed, mhi) {
   const c5 = cost5000(classes, isProposed);
   const m = nv(mhi);
-  return m > 0 ? c5 / m : null;
+  return c5 != null && m > 0 ? c5 / m : null;
 }
 
 // ─── Customer bill impact examples ──────────────────────────────────────────

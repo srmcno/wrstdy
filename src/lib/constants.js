@@ -1,10 +1,21 @@
 export const VER = '2.1.0';
 export const SK = 'wrs-studies-v2';
-export const COUNTIES = [
-  'Atoka', 'Bryan', 'Choctaw', 'Coal', 'Haskell', 'Hughes', 'Johnston',
-  'Latimer', 'Le Flore', 'Marshall', 'McCurtain', 'McIntosh', 'Okfuskee',
-  'Pittsburg', 'Pontotoc', 'Pushmataha', 'Sequoyah', 'Other'
+// Grouped for the county <select>s: the 10.5 counties of the Choctaw Nation
+// reservation first, then neighboring counties whose systems OWRM sometimes
+// assists. The flat COUNTIES list is preserved (same values, same order) so
+// existing saved studies keep matching their <option> values.
+export const COUNTY_GROUPS = [
+  {
+    label: 'Choctaw Nation Reservation',
+    counties: ['Atoka', 'Bryan', 'Choctaw', 'Coal', 'Haskell', 'Hughes',
+      'Latimer', 'Le Flore', 'McCurtain', 'Pittsburg', 'Pushmataha'],
+  },
+  {
+    label: 'Neighboring Counties',
+    counties: ['Johnston', 'Marshall', 'McIntosh', 'Okfuskee', 'Pontotoc', 'Sequoyah', 'Other'],
+  },
 ];
+export const COUNTIES = COUNTY_GROUPS.flatMap(g => g.counties);
 
 export const STEPS = [
   { id: 0, l: '1  System Info' },

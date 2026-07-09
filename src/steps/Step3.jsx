@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { budgetTotal, totalRevenue, nv, fmt } from '../lib/calc.js';
 import { defBudget } from '../lib/state.js';
 import { BudgetSection } from '../components/BudgetSection.jsx';
+import { ConfirmModal } from '../components/ConfirmModal.jsx';
 import { ask, hasApiKey } from '../lib/ai.js';
 
 const SECTIONS = [
@@ -66,10 +67,8 @@ export function Step3({ study, onField }) {
   const rev = tab === 'prop' ? revProp.monthly : revCur.monthly;
   const net = rev - tots.total;
 
-  const copyCurToProp = () => {
-    if (!window.confirm('Overwrite the entire Proposed Budget with the Current Budget? You can then edit the deltas.')) return;
-    onField('propBudget', cloneBudget(curB));
-  };
+  const [confirmCopy, setConfirmCopy] = useState(false);
+  const doCopyCurToProp = () => onField('propBudget', cloneBudget(curB));
 
   // AI budget review — flags unusual line items and missing categories.
   const [aiReview, setAiReview] = useState('');
@@ -118,7 +117,7 @@ Flag concerns and missing categories.`;
           <p style={{ color: 'var(--mid)', fontSize: 12 }}>Monthly expense figures for current and proposed budgets. Enter all amounts as monthly values.</p>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn b-out btn-sm" onClick={copyCurToProp} title="Copy entire current budget to proposed">⇉ Copy Cur→Prop</button>
+          <button className="btn b-out btn-sm" onClick={() => setConfirmCopy(true)} title="Copy entire current budget to proposed">⇉ Copy Cur→Prop</button>
           <button
             className="btn b-lime btn-sm"
             onClick={reviewBudget}
@@ -129,6 +128,16 @@ Flag concerns and missing categories.`;
           </button>
         </div>
       </div>
+      {confirmCopy && (
+        <ConfirmModal
+          title="Copy current budget to proposed?"
+          message="The entire Proposed Budget will be overwritten with the Current Budget. You can then edit the deltas."
+          confirmLabel="Copy Cur→Prop"
+          destructive={false}
+          onConfirm={() => { doCopyCurToProp(); setConfirmCopy(false); }}
+          onCancel={() => setConfirmCopy(false)}
+        />
+      )}
       {aiErr && <div className="al al-e">{aiErr}</div>}
       {aiReview && (
         <div className="card" style={{ borderLeft: '4px solid var(--lime)', background: 'var(--lime-pale)', position: 'relative' }}>

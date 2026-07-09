@@ -90,7 +90,9 @@ export function buildReport(study) {
       cur: ci.monthly,
       prop: pi.monthly,
       delta: chg,
-      pct: ci.monthly > 0 ? (chg / ci.monthly) * 100 : 0,
+      // null (renders "—") when current revenue is zero — "+$2,000 (0.0%)"
+      // reads as a contradiction in board documents.
+      pct: ci.monthly > 0 ? (chg / ci.monthly) * 100 : null,
     };
   });
 

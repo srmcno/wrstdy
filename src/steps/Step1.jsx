@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { COUNTIES } from '../lib/constants.js';
+import { COUNTY_GROUPS } from '../lib/constants.js';
 import { F, $I } from '../components/atoms.jsx';
 import { geocode } from '../lib/geocode.js';
 import { ask, hasApiKey } from '../lib/ai.js';
+
+const fmtMoney = (v) => '$' + Math.round(v).toLocaleString('en-US');
 
 function StatusMsg({ msg }) {
   if (!msg) return null;
@@ -184,7 +186,11 @@ State: Oklahoma`;
           <F label="County">
             <select className="sel" value={si.county} onChange={(e) => usi('county', e.target.value)}>
               <option value="">Select county...</option>
-              {COUNTIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {COUNTY_GROUPS.map(g => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.counties.map(c => <option key={c} value={c}>{c}</option>)}
+                </optgroup>
+              ))}
             </select>
           </F>
         </div>
@@ -271,14 +277,38 @@ State: Oklahoma`;
       <div className="card">
         <div className="sh">Demographics & MHI</div>
         <div className="g3">
-          <F label="Median Monthly HHI ($)" hint="Census ACS 5-year estimate — used for Affordability Index">
-            <$I value={dm.medianMonthlyHHI} onChange={(v) => udm('medianMonthlyHHI', v)} />
+          <F label="Median Household Income — MONTHLY ($)" hint="Census ACS publishes ANNUAL MHI — divide it by 12 before entering. Used for the Affordability Index.">
+            <$I value={dm.medianMonthlyHHI} onChange={(v) => udm('medianMonthlyHHI', v)} placeholder="e.g. 3,000 (= $36,000/yr ÷ 12)" />
           </F>
           <F label="Effective Date (Proposed Rates)">
             <input className="inp" type="date" value={dm.effectiveDate || ''} onChange={(e) => udm('effectiveDate', e.target.value)} />
           </F>
           <div />
         </div>
+        {(() => {
+          // ACS MHI is annual; pasting it here unchanged understates the
+          // Affordability Index 12× and flips the USDA-grant story. No real
+          // service-area monthly MHI approaches $10k, so treat that as the
+          // "this is an annual figure" tell and offer the ÷12 fix.
+          // Strip "$" and "," first — the value can arrive as a formatted
+          // string via JSON import or AI estimate, where "45,000" would
+          // parse as 45 and silently skip this warning.
+          const raw = parseFloat(String(dm.medianMonthlyHHI || '').replace(/[$,]/g, ''));
+          if (!(raw >= 10000)) return null;
+          const monthly = Math.round(raw / 12);
+          return (
+            <div className="al al-w" style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span>
+                <strong>{fmtMoney(raw)}/month looks like an annual figure.</strong>{' '}
+                This field needs <em>monthly</em> household income — entering the annual ACS number makes
+                rates look 12× more affordable than they are and can wrongly rule out USDA RD grant eligibility.
+              </span>
+              <button className="btn b-lime btn-sm" onClick={() => udm('medianMonthlyHHI', String(monthly))}>
+                Use {fmtMoney(monthly)}/mo (÷ 12)
+              </button>
+            </div>
+          );
+        })()}
       </div>
       <div className="card">
         <div className="sh">Contact Information</div>

@@ -192,24 +192,29 @@ async function callUpstream(cfg, v) {
     ? { 'content-type': 'application/json', 'x-api-key': cfg.anthropicKey, 'anthropic-version': '2023-06-01' }
     : { 'content-type': 'application/json', 'authorization': `Bearer ${cfg.openaiKey}` };
 
+  // One timeout spans the whole exchange — headers AND body. Clearing the
+  // timer as soon as fetch resolves (headers only) left `resp.text()`
+  // unbounded, so a provider stalling mid-body hung the client forever.
+  // Reading the body inside attempt() also drains retryable error bodies,
+  // so retries don't pin the first connection.
   const attempt = async () => {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), cfg.upstreamTimeoutMs);
     try {
-      return await fetch(url, { method: 'POST', headers, body: JSON.stringify(req.body), signal: ac.signal });
+      const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(req.body), signal: ac.signal });
+      return { resp, raw: await resp.text() };
     } finally {
       clearTimeout(timer);
     }
   };
 
-  let resp = await attempt();
+  let { resp, raw } = await attempt();
   if (RETRYABLE.has(resp.status)) {
     const retryAfter = Number(resp.headers.get('retry-after'));
     const waitMs = Number.isFinite(retryAfter) ? Math.min(10_000, retryAfter * 1000) : 2000;
     await new Promise(r => setTimeout(r, waitMs));
-    resp = await attempt();
+    ({ resp, raw } = await attempt());
   }
-  const raw = await resp.text();
   let data = null;
   try { data = JSON.parse(raw); } catch { /* leave null */ }
   if (!resp.ok) {
@@ -244,18 +249,25 @@ function writeJson(cfg, res, status, body) {
 function readBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let rejected = false;
     const chunks = [];
     req.on('data', (c) => {
+      if (rejected) return;
       size += c.length;
       if (size > maxBytes) {
+        // Don't destroy the request here — that tears down the socket before
+        // the handler can write the 413, so the client sees a connection
+        // reset instead of the friendly JSON error. Stop buffering, keep
+        // draining, and let the handler respond.
+        rejected = true;
+        chunks.length = 0;
         reject(Object.assign(new Error('Request body too large'), { status: 413 }));
-        req.destroy();
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
+    req.on('end', () => { if (!rejected) resolve(Buffer.concat(chunks).toString('utf8')); });
+    req.on('error', (e) => { if (!rejected) reject(e); });
   });
 }
 

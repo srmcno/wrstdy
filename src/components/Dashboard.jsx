@@ -35,7 +35,27 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
         </div>
       </div>
 
-      {studies.length === 0 ? (
+      {view === 'map' ? (
+        /* The map stays reachable with zero studies — it shows the known-PWS
+           markers, which are the natural starting point for a first study
+           ("find the system on the map → create pre-filled study"). */
+        <>
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, color: 'var(--teal)', fontWeight: 500 }}>Choctaw Nation Water Systems</div>
+                <div style={{ fontSize: 11.5, color: 'var(--mid)', marginTop: 2 }}>
+                  {studies.length === 0
+                    ? 'No studies yet — click a known water system marker to start a pre-filled study, or use "+ New Study".'
+                    : `Showing ${mappedCount} of ${studies.length} studies on map. Studies without coordinates won't appear — add an address in Step 1 and click "Geocode".`}
+                </div>
+              </div>
+              <button className="btn b-lime btn-sm" onClick={onCreate}>+ New Study</button>
+            </div>
+          </div>
+          <MapView studies={studies} onSelect={onSelect} onCreateFromKnown={onCreateFromKnown} />
+        </>
+      ) : studies.length === 0 ? (
         <div className="card" style={{ maxWidth: 540, margin: '0 auto' }}>
           <div className="dash-empty">
             <div className="dash-empty-icon" style={{ opacity: .35 }}>💧</div>
@@ -43,7 +63,13 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
               <h2 style={{ fontSize: 17, color: 'var(--teal)', marginBottom: 8 }}>No Rate Studies Yet</h2>
               <p style={{ color: 'var(--mid)', fontSize: 13, lineHeight: 1.6 }}>
                 Create a new study to begin, or load a sample study to see what the tool can do — full
-                data already filled in across all eight steps.
+                data already filled in across all eight steps. You can also start from the{' '}
+                <button
+                  onClick={() => setView('map')}
+                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--teal-mid)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline' }}
+                >
+                  map of known water systems
+                </button>.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -58,21 +84,6 @@ export function Dashboard({ studies, onSelect, onCreate, onLoadSample, onCreateF
             </div>
           </div>
         </div>
-      ) : view === 'map' ? (
-        <>
-          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 14, color: 'var(--teal)', fontWeight: 500 }}>Choctaw Nation Water Systems</div>
-                <div style={{ fontSize: 11.5, color: 'var(--mid)', marginTop: 2 }}>
-                  Showing {mappedCount} of {studies.length} studies on map. Studies without coordinates won't appear — add an address in Step 1 and click "Geocode".
-                </div>
-              </div>
-              <button className="btn b-lime btn-sm" onClick={onCreate}>+ New Study</button>
-            </div>
-          </div>
-          <MapView studies={studies} onSelect={onSelect} onCreateFromKnown={onCreateFromKnown} />
-        </>
       ) : (
         <>
           <div className="g4 dash-stats">
