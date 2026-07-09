@@ -5,6 +5,7 @@ const PORT = Number(process.env.PORT || process.env.GEOCODE_PROXY_PORT || 8787);
 const CONTACT = process.env.GEOCODE_CONTACT;
 const UPSTREAM = 'https://nominatim.openstreetmap.org/search';
 const MIN_INTERVAL_MS = 1100;
+const UPSTREAM_TIMEOUT_MS = Number(process.env.GEOCODE_UPSTREAM_TIMEOUT_MS || 15_000);
 
 if (!CONTACT) {
   console.error('Set GEOCODE_CONTACT to an email address or URL before starting the geocoding proxy.');
@@ -75,7 +76,7 @@ const server = http.createServer(async (req, res) => {
     // Bound the whole upstream exchange (headers + body) — a hung Nominatim
     // would otherwise hold the client request for undici's ~5-minute default.
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 15_000);
+    const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
     let upstream, body;
     try {
       upstream = await fetch(upstreamUrl, {
@@ -96,6 +97,12 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(body);
   } catch (error) {
+    // A fired timeout surfaces as AbortError — report it as a gateway
+    // timeout with a readable message, not a generic 502 "operation aborted".
+    if (error?.name === 'AbortError') {
+      writeJson(res, 504, { error: 'Upstream geocoding request timed out' });
+      return;
+    }
     writeJson(res, 502, { error: error.message || String(error) });
   }
 });
