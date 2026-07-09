@@ -256,16 +256,16 @@ export function Step8({ study, onField }) {
                 <tbody>
                   <tr>
                     <td>Base / Minimum Charge</td>
-                    <td style={{ textAlign: 'right' }}>{fmt.c(r.curMinCharge)}</td>
-                    <td style={{ textAlign: 'right' }}>{fmt.c(r.propMinCharge)}</td>
-                    <td style={{ textAlign: 'right' }}>{(r.minChargeDelta >= 0 ? '+' : '') + fmt.c(r.minChargeDelta)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt.cd(r.curMinCharge, 'N/A')}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt.cd(r.propMinCharge, 'N/A')}</td>
+                    <td style={{ textAlign: 'right' }}>{r.minChargeDelta == null ? 'N/A' : (r.minChargeDelta >= 0 ? '+' : '') + fmt.c(r.minChargeDelta)}</td>
                   </tr>
                   {r.tiers.map((t, i) => (
-                    <tr key={i}>
+                    <tr key={t.gal ?? i}>
                       <td>{t.label ? `${t.label} (up to ${fmt.n(t.gal)} gal)` : `Up to ${fmt.n(t.gal)} gal`}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt.r(t.cur)}/1k</td>
-                      <td style={{ textAlign: 'right' }}>{fmt.r(t.prop)}/1k</td>
-                      <td style={{ textAlign: 'right' }}>{(t.delta >= 0 ? '+' : '') + fmt.r(t.delta)}</td>
+                      <td style={{ textAlign: 'right' }}>{t.cur == null ? 'N/A' : `${fmt.r(t.cur)}/1k`}</td>
+                      <td style={{ textAlign: 'right' }}>{t.prop == null ? 'N/A' : `${fmt.r(t.prop)}/1k`}</td>
+                      <td style={{ textAlign: 'right' }}>{t.delta == null ? 'N/A' : (t.delta >= 0 ? '+' : '') + fmt.r(t.delta)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -292,11 +292,21 @@ export function Step8({ study, onField }) {
                   {cls.rows.map((row) => (
                     <tr key={row.gal}>
                       <td>{fmt.n(row.gal)} gallons</td>
-                      <td style={{ textAlign: 'right' }}>{fmt.c(row.cur)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt.c(row.prop)}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        {(row.delta >= 0 ? '+' : '') + fmt.c(row.delta)}
-                        {row.pct != null ? ` (${(row.pct >= 0 ? '+' : '') + (row.pct * 100).toFixed(1)}%)` : ''}
+                      <td style={{ textAlign: 'right' }}>{fmt.cd(row.cur, 'N/A')}</td>
+                      <td style={{ textAlign: 'right' }}>{fmt.cd(row.prop, 'N/A')}</td>
+                      <td style={{
+                        textAlign: 'right',
+                        // Customer-facing perspective: a higher bill is bad news for
+                        // the customer — the opposite of revenue tables elsewhere,
+                        // where more revenue to the system is colored green/lime.
+                        color: row.delta == null ? undefined : row.delta >= 0 ? 'var(--red)' : 'var(--lime-dim)',
+                      }}>
+                        {row.delta == null ? 'N/A' : (
+                          <>
+                            {(row.delta >= 0 ? '+' : '') + fmt.c(row.delta)}
+                            {row.pct != null ? ` (${(row.pct >= 0 ? '+' : '') + (row.pct * 100).toFixed(1)}%)` : ''}
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}

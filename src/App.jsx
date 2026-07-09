@@ -92,9 +92,10 @@ export default function App() {
 
   function exportStudy(id) {
     const s = id ? studies.find(x => x.id === id) : null;
+    const exportedAt = new Date().toISOString();
     const data = s
-      ? { exportedAt: new Date().toISOString(), version: VER, study: s }
-      : { exportedAt: new Date().toISOString(), version: VER, studies };
+      ? { exportedAt, version: VER, study: s }
+      : { exportedAt, version: VER, studies };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -105,7 +106,13 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
     pushToast(`Exported ${filename}`);
-    if (s) update(s.id, { lastExportedAt: new Date().toISOString() });
+    // Export All backs up every study in the file, so every study's backup
+    // reminder should clear — not just the single-study path's target.
+    if (s) {
+      update(s.id, { lastExportedAt: exportedAt });
+    } else {
+      setStudies(p => p.map(x => ({ ...x, lastExportedAt: exportedAt })));
+    }
   }
 
   function importStudy(e) {

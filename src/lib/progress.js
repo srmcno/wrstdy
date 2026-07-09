@@ -33,6 +33,11 @@ export function stepCompletion(study = {}) {
 }
 
 const STALE_EXPORT_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Export itself writes lastExportedAt and updatedAt a few milliseconds apart
+// (two separate `new Date()` calls in the same save), so updatedAt is always
+// very slightly later than lastExportedAt even with zero real edits. Without
+// this tolerance, that alone would re-trigger the reminder after 7 days.
+const EDIT_TOLERANCE_MS = 5000;
 
 // True once a study has real financial data entered but hasn't been backed
 // up (Export Study .json) since — the only persistence is browser
@@ -45,5 +50,5 @@ export function needsBackupReminder(study = {}) {
   if (!study.lastExportedAt) return true;
   const lastExport = new Date(study.lastExportedAt).getTime();
   const updated = new Date(study.updatedAt || 0).getTime();
-  return updated > lastExport && Date.now() - lastExport > STALE_EXPORT_MS;
+  return updated - lastExport > EDIT_TOLERANCE_MS && Date.now() - lastExport > STALE_EXPORT_MS;
 }
