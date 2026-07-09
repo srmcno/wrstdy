@@ -205,17 +205,28 @@ export function rateStructureComparison(classes = []) {
       const propTiers = normalizeTiers(c.prop?.tiers);
       const curHasData = sideHasRates(c.cur);
       const propHasData = sideHasRates(c.prop);
-      // Usage beyond a side's final breakpoint continues at that side's final
-      // tier rate (calcBill's actual billing behavior) — a shorter tier list
-      // on one side must fall back to its own last rate here too, or the
-      // comparison shows a fake $0.00/1k for rows past its final block.
-      const lastRate = (tiers) => tiers.length > 0 ? nv(tiers[tiers.length - 1]?.rate) : null;
-      const rowCount = Math.max(curTiers.length, propTiers.length);
-      const tiers = Array.from({ length: rowCount }, (_, i) => {
-        const gal = propTiers[i]?.gal ?? curTiers[i]?.gal ?? null;
-        const label = propTiers[i]?.label || curTiers[i]?.label || '';
-        const cur = !curHasData ? null : i < curTiers.length ? nv(curTiers[i]?.rate) : lastRate(curTiers);
-        const prop = !propHasData ? null : i < propTiers.length ? nv(propTiers[i]?.rate) : lastRate(propTiers);
+      // A side's own rate for usage AT a given gallon breakpoint — the first
+      // of that side's tiers whose breakpoint covers it, or its final tier's
+      // rate if the breakpoint exceeds every configured block (calcBill's
+      // "usage beyond the last block continues at the final rate" behavior).
+      // Evaluated independently per side, NOT by matching array index —
+      // current and proposed can have entirely different breakpoints (a
+      // sub-1,000-gal lifeline block on one side only, say), so pairing by
+      // index would compare unrelated gallon levels or silently drop a real
+      // breakpoint whenever the two tier counts happened to match.
+      const rateAtGal = (tiers, gal) => {
+        if (tiers.length === 0) return null;
+        const covering = tiers.find(t => t.gal >= gal);
+        return nv((covering ?? tiers[tiers.length - 1]).rate);
+      };
+      // Union of every real breakpoint from either side, ascending — each is
+      // a meaningful "up to X gal" row even when the two tier structures
+      // don't line up 1:1.
+      const uniqueGals = Array.from(new Set([...curTiers, ...propTiers].map(t => t.gal))).sort((a, b) => a - b);
+      const tiers = uniqueGals.map(gal => {
+        const label = propTiers.find(t => t.gal === gal)?.label || curTiers.find(t => t.gal === gal)?.label || '';
+        const cur = curHasData ? rateAtGal(curTiers, gal) : null;
+        const prop = propHasData ? rateAtGal(propTiers, gal) : null;
         const delta = cur != null && prop != null ? prop - cur : null;
         return { gal, label, cur, prop, delta };
       });

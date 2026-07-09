@@ -441,3 +441,28 @@ test('rateStructureComparison ignores padded/invalid tier slots (gal: 0 from a c
   // Proposed has only one real tier — the second row falls back to it.
   assert.equal(row.tiers[1].prop, 5);
 });
+
+test('rateStructureComparison compares breakpoints by their own gallon value, not by array index, when the two sides diverge', () => {
+  // Same tier COUNT on both sides (one each), but at different breakpoints —
+  // index-based pairing would compare current's 2,000-gal rate against
+  // proposed's 1,000-gal rate as if they were the same row, and would never
+  // surface current's real 2,000-gal breakpoint at all.
+  const classes = [{
+    id: 'res', name: 'Residential Water', enabled: true,
+    cur: { minCharge: '10', tiers: [{ gal: 2000, rate: '5' }] },
+    prop: { minCharge: '10', tiers: [{ gal: 1000, rate: '7' }] },
+  }];
+  const [row] = rateStructureComparison(classes);
+  assert.equal(row.tiers.length, 2, 'both real breakpoints must appear as their own row');
+  assert.equal(row.tiers[0].gal, 1000);
+  // At the 1,000-gal breakpoint: current has no block that small, so its
+  // rate falls back to its only (2,000-gal) tier; proposed's own 1,000-gal
+  // tier applies directly.
+  assert.equal(row.tiers[0].cur, 5);
+  assert.equal(row.tiers[0].prop, 7);
+  assert.equal(row.tiers[1].gal, 2000);
+  // At the 2,000-gal breakpoint: current's own tier applies directly;
+  // proposed has no block that large, so it falls back to its only tier.
+  assert.equal(row.tiers[1].cur, 5);
+  assert.equal(row.tiers[1].prop, 7);
+});
