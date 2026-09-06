@@ -1,17 +1,19 @@
 {
   "name": "wrstdy",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
-  "description": "Water Rate Study Tool — Choctaw Nation Office of Water Resource Management",
+  "description": "Water Rate Study Tool \u2014 Choctaw Nation Office of Water Resource Management",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "build:single": "VITE_SINGLEFILE=1 vite build --outDir dist-single",
+    "build:pcf": "vite build --config vite.pcf.config.js",
     "preview": "vite preview",
     "geocode-proxy": "node scripts/geocode-proxy.js",
     "ai-proxy": "node scripts/ai-proxy.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "node scripts/browser-smoke.mjs"
   },
   "dependencies": {
     "chart.js": "^4.4.0",

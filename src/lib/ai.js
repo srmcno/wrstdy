@@ -10,6 +10,8 @@
 //   2. Direct-browser mode (local/internal only): calls Anthropic directly with
 //      a per-device key. Anthropic only.
 
+import { getHost, getSetting, setSetting } from '../platform/host.js';
+
 export const KEY_STORAGE = 'wrs-anthropic-key';
 export const MODEL_STORAGE = 'wrs-ai-model';
 export const ACCESS_STORAGE = 'wrs-ai-access-code';
@@ -33,18 +35,30 @@ export const DIRECT_MODELS = [
 const DIRECT_DEFAULT = 'claude-opus-4-8';
 const DIRECT_LIGHT = 'claude-haiku-4-5-20251001';
 
-export const safeGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
-export const safeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
-export const safeDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } };
+// Per-device settings go through the host: the web build stores them in this
+// browser's localStorage, while the Power Apps code component keeps them in
+// memory (the component framework forbids web storage, and provider keys never
+// belong inside a canvas app anyway).
+export const safeGet = (k) => getSetting(k);
+export const safeSet = (k, v) => { setSetting(k, v); };
+export const safeDel = (k) => { setSetting(k, null); };
+
+// True when the host itself brokers AI calls — the Power Apps path, where the
+// canvas app runs a Power Automate flow and hands the reply back. In that mode
+// the app never holds a provider key or calls an endpoint directly, which is
+// what the component framework requires (custom auth is not supported in
+// canvas code components).
+export const hostBrokersAi = () => typeof getHost().requestAi === 'function';
 
 export function getApiKey() {
-  // Never use or require a browser-visible key when a proxy is configured.
-  if (USE_AI_PROXY) return '';
+  // Never use or require a browser-visible key when a proxy or the host is
+  // doing the calling.
+  if (USE_AI_PROXY || hostBrokersAi()) return '';
   return safeGet(KEY_STORAGE) || BUILD_KEY || '';
 }
 export function hasApiKey() {
   // Historical name kept for callers that only need to know whether AI can run.
-  return USE_AI_PROXY || !!getApiKey();
+  return hostBrokersAi() || USE_AI_PROXY || !!getApiKey();
 }
 
 export function getSelectedModel() { return safeGet(MODEL_STORAGE) || ''; }
@@ -122,6 +136,19 @@ function friendlyHttpError(status, bodyText) {
 const RETRYABLE = new Set([429, 500, 502, 503, 529]);
 
 async function postMessages(payload, { timeoutMs = 150_000 } = {}) {
+  // Host-brokered path (Power Apps): the component hands the request to the
+  // canvas app, which runs a Power Automate flow against the organisation's
+  // approved model and returns the reply. No key, no endpoint, no CORS.
+  const host = getHost();
+  if (typeof host.requestAi === 'function') {
+    const reply = await host.requestAi(payload);
+    const text = typeof reply === 'string' ? reply : extractText(reply);
+    if (!text || !text.trim()) {
+      throw new Error('The analysis service returned an empty response. Check the Power Automate flow wired to this control and try again.');
+    }
+    return { text, stopReason: (typeof reply === 'object' && reply?.stop_reason) || null };
+  }
+
   const headers = { 'Content-Type': 'application/json' };
 
   if (USE_AI_PROXY) {

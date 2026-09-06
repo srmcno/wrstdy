@@ -5,8 +5,7 @@
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
   Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType,
-  ImageRun, Header, Footer, PageNumber, LevelFormat,
-} from 'docx';
+  ImageRun, Header, Footer, PageNumber, } from 'docx';
 import { fmt } from '../calc.js';
 import { revenueBasisText } from './data.js';
 import { renderFundChart, renderRevExpChart, renderExpenseBreakdown } from './charts.js';
@@ -546,11 +545,12 @@ export async function exportDocx(report, filename, sealUint8) {
     }],
   });
 
-  const blob = await Packer.toBlob(doc);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  // Return the bytes rather than triggering a download here. Who delivers the
+  // file — a browser download, or Power Apps writing it to a SharePoint
+  // document library — is the host's decision, not the exporter's.
+  return {
+    filename,
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    bytes: await Packer.toBlob(doc).then(b => b.arrayBuffer()).then(b => new Uint8Array(b)),
+  };
 }

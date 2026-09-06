@@ -258,7 +258,10 @@ function BudgetCompare({ cur, prop, sections, onUpdCur, onUpdProp }) {
               const p = nv(prop[s.section]?.[f.k]);
               if (c === 0 && p === 0) return;
               const d = p - c;
-              const pct = c > 0 ? (d / c) * 100 : (p > 0 ? 100 : 0);
+              // A line that goes from $0 to $500 is not a "100% increase" —
+              // percentage change is undefined against a zero base, and the
+              // old 100% made new budget lines look like modest bumps.
+              const pctLabel = c > 0 ? fmt.pctOf(d, c) : (p > 0 ? 'New' : '—');
               rows.push(
                 <tr key={s.section + f.k}>
                   <td style={{ paddingLeft: 24, verticalAlign: 'middle' }}>{f.l}</td>
@@ -272,7 +275,7 @@ function BudgetCompare({ cur, prop, sections, onUpdCur, onUpdProp }) {
                     {d === 0 ? '—' : (d > 0 ? '+' : '') + fmt.c(d)}
                   </td>
                   <td style={{ textAlign: 'right', color: 'var(--mid)', fontSize: 11.5 }}>
-                    {c === 0 && p === 0 ? '—' : pct.toFixed(1) + '%'}
+                    {pctLabel}
                   </td>
                 </tr>
               );

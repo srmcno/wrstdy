@@ -1,8 +1,10 @@
 import { defBudget } from '../lib/state.js';
+import { validateStudy, summarizeFindings } from '../lib/validate.js';
+import { FindingsList } from '../components/FindingsList.jsx';
 import {
   budgetTotal, totalRevenue, classMonthlyIncome, hasUsageDistribution,
   operatingRatio, affordabilityIndex, debtToIncome, baseCoverage, debtServiceCoverage,
-  trueCostOfService, calc5Yr, nv, fmt
+  trueCostOfService, calc5Yr, targetFundBalance, nv, fmt
 } from '../lib/calc.js';
 
 function StatusPill({ ok, label }) {
@@ -13,7 +15,8 @@ function StatusPill({ ok, label }) {
 // ok flag for a nullable metric: null in → null out (renders neutral).
 const okIf = (v, pred) => (v == null ? null : pred(v));
 
-export function Step4({ study }) {
+export function Step4({ study, onGoToStep }) {
+  const findings = validateStudy(study);
   const classes = study.classes || [];
   const mhi = study.demographics?.medianMonthlyHHI;
   const curB = study.curBudget || defBudget();
@@ -37,7 +40,7 @@ export function Step4({ study }) {
   const proj = calc5Yr(classes, curB, propB, study.forecast || {});
   const curFY5 = proj.curFBArr[4] || 0;
   const propFY5 = proj.propFBArr[4] || 0;
-  const target = nv(study.forecast?.targetFundBalance || 5000);
+  const target = targetFundBalance(study.forecast);
   const tcsCur = trueCostOfService(curB, classes, false);
   const tcsProp = trueCostOfService(propB, classes, true);
   const anyDist = classes.some(c => c.enabled && hasUsageDistribution(c));
@@ -97,6 +100,16 @@ export function Step4({ study }) {
         <div className="al al-i" style={{ fontSize: 11.5 }}>
           No customer usage distribution entered (Step 2). Revenue is approximated by billing every customer at the
           class average, which understates revenue for tiered rates — enter a distribution for dependable numbers.
+        </div>
+      )}
+      {findings.length > 0 && (
+        <div className="card" style={{ borderLeft: `4px solid ${summarizeFindings(findings).error > 0 ? 'var(--red)' : 'var(--amber)'}` }}>
+          <div className="sh">Data Check — Review Before Trusting These Numbers</div>
+          <p style={{ fontSize: 12, color: 'var(--mid)', lineHeight: 1.6, marginBottom: 10 }}>
+            Every figure on this page is derived from Steps 1–3. These are the entries that look incomplete or
+            contradictory; each one changes at least one ratio below.
+          </p>
+          <FindingsList findings={findings} onGoToStep={onGoToStep} />
         </div>
       )}
       <div className="card">

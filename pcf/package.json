@@ -1,0 +1,27 @@
+{
+  "name": "wrstdy-pcf",
+  "version": "2.2.0",
+  "private": true,
+  "description": "Water Rate Study Tool — Power Apps code component (canvas apps)",
+  "scripts": {
+    "//": "prebuild/prestart run the Vite library build at the repo root, which emits WaterRateStudyTool/app/wrs-app.js. pcf-scripts then bundles index.ts (and that module) into a single bundle.js.",
+    "prebuild": "npm --prefix .. run build:pcf",
+    "prestart": "npm --prefix .. run build:pcf",
+    "prerebuild": "npm --prefix .. run build:pcf",
+    "build": "pcf-scripts build",
+    "clean": "pcf-scripts clean",
+    "rebuild": "pcf-scripts rebuild",
+    "start": "pcf-scripts start",
+    "start:watch": "pcf-scripts start watch",
+    "refreshTypes": "pcf-scripts refreshTypes"
+  },
+  "dependencies": {
+    "@types/powerapps-component-framework": "^1.3.15"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "pcf-scripts": "^1",
+    "pcf-start": "^1",
+    "typescript": "^5.5.4"
+  }
+}

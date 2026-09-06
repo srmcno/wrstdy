@@ -8,6 +8,7 @@ import {
   affordabilityIndex, debtToIncome, baseCoverage, operatingRatio, debtServiceCoverage,
   costPer1000, cost5000, calc5Yr, trueCostOfService, nv, fmt,
   billImpactExamples, rateStructureComparison,
+  targetFundBalance, forecastInflation,
 } from '../calc.js';
 
 // Shared wording for the data-quality / liability statement that appears in
@@ -44,7 +45,7 @@ export function buildReport(study) {
   const revCur = totalRevenue(classes, false);
   const revProp = totalRevenue(classes, true);
   const proj = calc5Yr(classes, curB, propB, study.forecast || {});
-  const target = nv(study.forecast?.targetFundBalance || 5000);
+  const target = targetFundBalance(study.forecast);
 
   const curOR = operatingRatio(revCur.monthly, curBT.total);
   const propOR = operatingRatio(revProp.monthly, propBT.total);
@@ -127,8 +128,7 @@ export function buildReport(study) {
   const scenarioNetMonthly = scenarioMonthlyRevenue - propBT.total;
 
   const expBaseAnnual = propBT.total * 12;
-  const infRaw = study.forecast?.inflationRate;
-  const fcInflation = String(infRaw ?? '').trim() === '' ? '3' : String(infRaw);
+  const fcInflation = forecastInflation(study.forecast);
   const fiveYearOutlook = proj.yrs.map((yr, i) => ({
     yr,
     revenue: proj.propRevArr[i],

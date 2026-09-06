@@ -31,6 +31,15 @@ jobs:
           VITE_AI_PROXY_URL: ${{ vars.VITE_AI_PROXY_URL }}
         run: npm run build
 
+      # The Power Apps code component's application bundle. Building it here
+      # catches a break in the PCF entry point (or the map stub aliasing) on
+      # the same push, rather than the next time somebody runs pac pcf push.
+      # The .NET solution build is intentionally not run in CI — it needs the
+      # Power Platform MSBuild targets and a publisher that matches the
+      # environment, both of which belong to the deploying admin.
+      - name: Build Power Apps component bundle
+        run: npm run build:pcf
+
       - name: Upload single-file HTML
         uses: actions/upload-artifact@v4
         with:
@@ -43,4 +52,11 @@ jobs:
         with:
           name: water-rate-study-tool-dist
           path: dist/
+          if-no-files-found: error
+
+      - name: Upload Power Apps component bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: water-rate-study-tool-pcf-app-bundle
+          path: pcf/WaterRateStudyTool/app/wrs-app.js
           if-no-files-found: error

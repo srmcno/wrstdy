@@ -1,0 +1,13 @@
+{
+  "extends": "./node_modules/pcf-scripts/tsconfig_base.json",
+  "compilerOptions": {
+    "typeRoots": ["node_modules/@types"],
+    // The React application arrives as a pre-built ES module (see
+    // vite.pcf.config.js). Its shape is declared in
+    // WaterRateStudyTool/types/wrs-app.d.ts, so no JS is type-checked here.
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true
+  },
+  "include": ["WaterRateStudyTool"],
+  "exclude": ["WaterRateStudyTool/app", "node_modules", "out"]
+}

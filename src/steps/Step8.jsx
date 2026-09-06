@@ -5,13 +5,19 @@ import { VER } from '../lib/constants.js';
 import {
   budgetTotal, totalRevenue, costPer1000, calc5Yr, operatingRatio,
   affordabilityIndex, debtToIncome, debtServiceCoverage, trueCostOfService,
-  hasUsageDistribution, nv, fmt, billImpactExamples, rateStructureComparison
+  hasUsageDistribution, targetFundBalance, forecastInflation,
+  nv, fmt, billImpactExamples, rateStructureComparison
 } from '../lib/calc.js';
 import { buildReport, safeFileName, revenueBasisText } from '../lib/exporters/data.js';
 import { statusMeta } from '../lib/status.js';
 import { pushToast } from '../components/Toasts.jsx';
+import { deliverFile, hostPrint, can } from '../platform/host.js';
+import { validateStudy, summarizeFindings } from '../lib/validate.js';
+import { FindingsList, FindingsSummary } from '../components/FindingsList.jsx';
 
-export function Step8({ study, onField }) {
+export function Step8({ study, onField, onGoToStep }) {
+  const findings = validateStudy(study);
+  const findingSummary = summarizeFindings(findings);
   const classes = study.classes || [];
   const mhi = study.demographics?.medianMonthlyHHI;
   const si = study.systemInfo;
@@ -42,8 +48,7 @@ export function Step8({ study, onField }) {
   const rateStructure = rateStructureComparison(classes);
   const billImpact = billImpactExamples(classes);
   const expBase = propBT.total * 12;
-  const infRaw = study.forecast?.inflationRate;
-  const fcInflation = String(infRaw ?? '').trim() === '' ? '3' : String(infRaw);
+  const fcInflation = forecastInflation(study.forecast);
 
   // Affordability status against the corrected USDA RD / EPA conventions:
   // a HIGHER index (more of household income going to water) is what supports
@@ -73,10 +78,11 @@ export function Step8({ study, onField }) {
     let filename = '';
     try {
       const report = buildReport(study);
+      let file;
       if (kind === 'pdf') {
         filename = `${baseName}-${yearTag}-rate-study.pdf`;
         const { exportPDF } = await import('../lib/exporters/pdf.js');
-        await exportPDF(report, filename);
+        file = await exportPDF(report, filename);
       } else if (kind === 'docx') {
         filename = `${baseName}-${yearTag}-rate-study.docx`;
         const { exportDocx } = await import('../lib/exporters/docx.js');
@@ -86,9 +92,14 @@ export function Step8({ study, onField }) {
           const r = await fetch(SEAL);
           sealBytes = new Uint8Array(await r.arrayBuffer());
         } catch { /* skip seal */ }
-        await exportDocx(report, filename, sealBytes);
+        file = await exportDocx(report, filename, sealBytes);
       }
-      pushToast(`Exported ${filename}`, { kind: 'ok' });
+      // The exporters produce bytes; the host decides where they land — a
+      // browser download, or a hand-off to Power Apps for a SharePoint
+      // document library.
+      const result = await deliverFile({ ...file, kind: `report-${kind}`, studyId: study.id });
+      if (!result.ok) throw new Error(result.message);
+      pushToast(result.message, { kind: 'ok' });
     } catch (e) {
       console.error(e);
       const stage = e?.stage ? ` during ${e.stage}` : '';
@@ -131,9 +142,29 @@ export function Step8({ study, onField }) {
           <button className="btn b-lime btn-sm" onClick={() => doExport('pdf')} disabled={!!busy}>
             {busy === 'pdf' ? 'Building…' : '📄 Export PDF'}
           </button>
-          <button className="btn b-teal btn-sm" onClick={() => window.print()}>🖨 Print</button>
+          {/* Printing the host page is meaningless when this app is one
+              component on a canvas app screen — the PDF export is the
+              equivalent action there, so the button is simply not offered. */}
+          {can('print') && (
+            <button className="btn b-teal btn-sm" onClick={hostPrint}>🖨 Print</button>
+          )}
         </div>
       </div>
+      {findingSummary.total > 0 && (
+        <div
+          className={'al no-print ' + (findingSummary.error > 0 ? 'al-e' : 'al-w')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}
+        >
+          <span>
+            <strong>
+              {findingSummary.error > 0
+                ? `${findingSummary.error} data issue${findingSummary.error === 1 ? '' : 's'} should be fixed before this report goes to a board.`
+                : 'Review the data checks below before distributing this report.'}
+            </strong>{' '}
+            See <em>Data Check</em> near the bottom of this page.
+          </span>
+        </div>
+      )}
       <div className="al al-i no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span>
           <strong>Report status:</strong>{' '}
@@ -337,7 +368,7 @@ export function Step8({ study, onField }) {
             <tr className="tr-t">
               <td>Fund Balance (Proposed, {fcInflation}% forecast)</td>
               {proj.propFBArr.map((v, i) => (
-                <td key={i} style={{ textAlign: 'right', color: v >= nv(study.forecast?.targetFundBalance || 5000) ? '#a8e060' : '#fca5a5' }}>
+                <td key={i} style={{ textAlign: 'right', color: v >= targetFundBalance(study.forecast) ? '#a8e060' : '#fca5a5' }}>
                   {fmt.c(v)}
                 </td>
               ))}
@@ -477,6 +508,20 @@ export function Step8({ study, onField }) {
         <p style={{ fontSize: 11.5, color: 'var(--mid)', lineHeight: 1.65 }}>
           Revenue basis for this study: {revenueBasisText(distBasis, 'Step 2')}
         </p>
+      </div>
+      <div className="card no-print" style={{ borderLeft: `4px solid ${findingSummary.error > 0 ? 'var(--red)' : findingSummary.total > 0 ? 'var(--amber)' : 'var(--lime)'}` }}>
+        <div className="sh" style={{ justifyContent: 'space-between' }}>
+          <span>Data Check</span>
+          <span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0, fontSize: 11, fontWeight: 500 }}>
+            <FindingsSummary findings={findings} />
+          </span>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--mid)', lineHeight: 1.65, marginBottom: 10 }}>
+          Automated review of this study for the gaps and transcription errors that most often reach a
+          board packet unnoticed. Nothing here blocks an export — use it as the last read-through before
+          the report is distributed.
+        </p>
+        <FindingsList findings={findings} onGoToStep={onGoToStep} />
       </div>
       <div className="card" style={{ borderLeft: '4px solid var(--lime)' }}>
         <div className="sh">Final Recommendations</div>

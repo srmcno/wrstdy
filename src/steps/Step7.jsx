@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
-import { defBudget } from '../lib/state.js';
+import { defBudget, trimAiHistory, MAX_AI_HISTORY } from '../lib/state.js';
 import {
   budgetTotal, totalRevenue, classMonthlyIncome, classCustomers, hasUsageDistribution,
   affordabilityIndex, cost5000, calc5Yr, debtToIncome, baseCoverage, debtServiceCoverage,
-  costPer1000, operatingRatio, trueCostOfService, usageBrackets, nv, fmt
+  costPer1000, operatingRatio, trueCostOfService, usageBrackets,
+  targetFundBalance, forecastInflation, nv, fmt
 } from '../lib/calc.js';
 import {
   chat, KEY_STORAGE, BUILD_KEY, AI_PROXY_URL, USE_AI_PROXY, safeGet, safeSet,
-  DIRECT_MODELS, fetchAiConfig, getCachedAiConfig,
+  DIRECT_MODELS, fetchAiConfig, getCachedAiConfig, hostBrokersAi,
   getSelectedModel, setSelectedModel, getAccessCode, setAccessCode,
 } from '../lib/ai.js';
 import { ConfirmModal } from '../components/ConfirmModal.jsx';
@@ -54,7 +55,7 @@ function buildContext(study) {
   const revCur = totalRevenue(classes, false);
   const revProp = totalRevenue(classes, true);
   const proj = calc5Yr(classes, curB, propB, study.forecast || {});
-  const target = nv(study.forecast?.targetFundBalance || 5000);
+  const target = targetFundBalance(study.forecast);
   const tcsCur = trueCostOfService(curB, classes, false);
   const tcsProp = trueCostOfService(propB, classes, true);
   const enabledClasses = classes.filter(c => c.enabled);
@@ -95,7 +96,7 @@ function buildContext(study) {
     `- Current:  expenses ${fmt.c(tcsCur.annualExpenses)}, gallons sold ${fmt.n(tcsCur.annualGallons)}, cost/1k gal ${fmt.cd(tcsCur.costPer1k, 'N/A')}, revenue/1k gal ${fmt.cd(tcsCur.revenuePer1k, 'N/A')}, break-even adjustment ${tcsCur.breakEvenAdjustment == null ? 'N/A' : (tcsCur.breakEvenAdjustment * 100).toFixed(1) + '%'}`,
     `- Proposed: expenses ${fmt.c(tcsProp.annualExpenses)}, gallons sold ${fmt.n(tcsProp.annualGallons)}, cost/1k gal ${fmt.cd(tcsProp.costPer1k, 'N/A')}, revenue/1k gal ${fmt.cd(tcsProp.revenuePer1k, 'N/A')}, break-even adjustment ${tcsProp.breakEvenAdjustment == null ? 'N/A' : (tcsProp.breakEvenAdjustment * 100).toFixed(1) + '%'}`,
     ``,
-    `5-YEAR PROJECTION (proposed rates + proposed budget, ${study.forecast?.inflationRate || 3}% inflation on operating expenses)`,
+    `5-YEAR PROJECTION (proposed rates + proposed budget, ${forecastInflation(study.forecast)}% inflation on operating expenses)`,
     proj.yrs.map((yr, i) => `- ${yr}: Revenue ${fmt.c(proj.propRevArr[i])}, Expenses ${fmt.c(proj.propExpArr[i])}, Fund Balance ${fmt.c(proj.propFBArr[i])}`).join('\n'),
     `Target fund balance: ${fmt.c(target)} (FY5 proposed: ${fmt.c(proj.propFBArr[4] || 0)} — ${(proj.propFBArr[4] || 0) >= target ? 'on target' : 'below target'})`,
     debtSched.length > 0 ? `Scheduled annual debt service (overrides budget loan lines): ${(study.forecast?.debtService || []).map((v, i) => `FY${i + 1}=${String(v ?? '').trim() ? fmt.c(v) : 'budget default'}`).join(', ')}` : `No per-year debt schedule entered — debt from budget loan lines.`,
@@ -192,7 +193,7 @@ export function Step7({ study, onField }) {
 
   function handleReply(reply, newHistory) {
     const replyText = reply.text;
-    const finalHistory = [...newHistory, { role: 'assistant', content: replyText }];
+    const finalHistory = trimAiHistory([...newHistory, { role: 'assistant', content: replyText }]);
     onField({
       aiHistory: finalHistory,
       aiAnalysis: { content: replyText, generatedAt: new Date().toISOString() },
@@ -205,7 +206,7 @@ export function Step7({ study, onField }) {
   }
 
   function runInitial() {
-    if (!USE_AI_PROXY && !apiKey) { setErr('Set your AI API key first (Settings).'); return; }
+    if (!USE_AI_PROXY && !hostBrokersAi() && !apiKey) { setErr('Set your AI API key first (Settings).'); return; }
     setErr(''); setNotice('');
     // Snapshot study at click time, but write the result via onField (patch
     // form) so it merges against the LATEST study in App state. Fire-and-
@@ -227,7 +228,11 @@ export function Step7({ study, onField }) {
   function sendFollowUp() {
     const text = followUp.trim();
     if (!text) return;
-    if (!USE_AI_PROXY && !apiKey) { setErr('Set your AI API key first (Settings).'); return; }
+    // startAiJob joins an existing job for this study instead of starting a
+    // second one, so sending while one is in flight would clear the box and
+    // silently discard the question.
+    if (loading) { setErr('An analysis is still running — wait for it to finish before sending another message.'); return; }
+    if (!USE_AI_PROXY && !hostBrokersAi() && !apiKey) { setErr('Set your AI API key first (Settings).'); return; }
     setErr(''); setNotice('');
     setFollowUp('');
     const historyAtClick = history;
@@ -301,7 +306,14 @@ export function Step7({ study, onField }) {
       {showKey && (
         <div className="card" style={{ background: 'var(--surface)' }}>
           <div className="sh">AI Connection</div>
-          {USE_AI_PROXY ? (
+          {hostBrokersAi() ? (
+            <p style={{ fontSize: 11.5, color: 'var(--mid)', lineHeight: 1.6 }}>
+              Analyses are run by the surrounding application against your organisation's approved
+              model. There is no key or endpoint to configure here, and no study data leaves that
+              connection. If analyses are unavailable, ask your Power Platform administrator to
+              check the analysis flow.
+            </p>
+          ) : USE_AI_PROXY ? (
             <>
               <p style={{ fontSize: 11, color: 'var(--mid)', marginBottom: 8 }}>
                 Using the server-side AI proxy at <code>{AI_PROXY_URL}</code>. Provider API keys stay on the
@@ -350,9 +362,11 @@ export function Step7({ study, onField }) {
               </div>
             </>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-            <button className="btn b-lime btn-sm" onClick={saveSettings}>Save</button>
-          </div>
+          {!hostBrokersAi() && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+              <button className="btn b-lime btn-sm" onClick={saveSettings}>Save</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -437,8 +451,15 @@ export function Step7({ study, onField }) {
         )}
       </div>
 
+      {history.length >= MAX_AI_HISTORY && (
+        <div className="al al-i" style={{ fontSize: 11.5 }}>
+          This conversation has reached {MAX_AI_HISTORY} messages. The oldest follow-ups are dropped
+          as new ones are added (the original data summary is always kept) so the study stays within
+          storage limits. The latest reply is what appears in the report.
+        </div>
+      )}
       {lastAnalysis && (
-        <div style={{ fontSize: 11, color: 'var(--dim)', textAlign: 'right' }}>
+        <div style={{ fontSize: 11, color: 'var(--mid)', textAlign: 'right' }}>
           Latest analysis ({study.aiAnalysis?.generatedAt ? fmt.date(study.aiAnalysis.generatedAt) : 'just now'}) is included in the Final Report and exports.
         </div>
       )}

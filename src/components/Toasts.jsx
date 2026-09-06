@@ -17,18 +17,34 @@ export function pushToast(message, opts = {}) {
   return t.id;
 }
 
+// Toasts stack up during a bulk action (importing several studies, a run of
+// failed exports). Past this many the oldest are dropped so the stack can
+// never cover the app it is reporting on.
+const MAX_VISIBLE = 4;
+
 export function ToastHost() {
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
+    // Auto-dismiss timers are tracked so unmounting clears them instead of
+    // leaving them to fire setState on a dead component.
+    const timers = new Set();
     const fn = (t) => {
-      setToasts(prev => [...prev, t]);
+      setToasts(prev => [...prev, t].slice(-MAX_VISIBLE));
       if (t.duration > 0) {
-        setTimeout(() => setToasts(prev => prev.filter(x => x.id !== t.id)), t.duration);
+        const id = setTimeout(() => {
+          timers.delete(id);
+          setToasts(prev => prev.filter(x => x.id !== t.id));
+        }, t.duration);
+        timers.add(id);
       }
     };
     listeners.add(fn);
-    return () => listeners.delete(fn);
+    return () => {
+      listeners.delete(fn);
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+    };
   }, []);
 
   if (toasts.length === 0) return null;
