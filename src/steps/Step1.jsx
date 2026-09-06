@@ -116,13 +116,24 @@ State: Oklahoma`;
       // Combine systemInfo + demographics into a SINGLE patch so App's setStudies
       // commits both fields in one render. Two sequential onField calls across
       // an `await` boundary in React 18 don't auto-batch reliably.
-      const patch = { systemInfo: { ...si, ...siPatch } };
+      //
+      // The values are FUNCTIONS, not objects. `si` and `dm` were captured
+      // before the AI request, which takes seconds — long enough for the user
+      // to type into another field on this step. Sending `{ ...si, ...siPatch }`
+      // replaced the whole systemInfo with that stale snapshot and reverted
+      // their typing. Merging against the current value at commit time keeps
+      // both the estimate and whatever they entered meanwhile.
+      const patch = {};
+      if (Object.keys(siPatch).length > 0) {
+        patch.systemInfo = (cur) => ({ ...(cur || {}), ...siPatch });
+      }
       if (j.monthlyMHI && !dm.medianMonthlyHHI) {
-        patch.demographics = { ...dm, medianMonthlyHHI: String(j.monthlyMHI) };
+        const mhi = String(j.monthlyMHI);
+        patch.demographics = (cur) => ({ ...(cur || {}), medianMonthlyHHI: mhi });
         filled.push('Monthly HHI');
       }
       // Skip the update entirely when nothing changed — avoids a needless
-      // re-render and localStorage write from a new-but-identical object ref.
+      // re-render and storage write from a new-but-identical object ref.
       if (filled.length > 0) onField(patch);
       if (mountedRef.current) {
         const msg = filled.length > 0

@@ -5,6 +5,7 @@ import {
   nv, fmt, targetFundBalance, forecastInflation, monthlyDebtService,
   calc5Yr, DEFAULT_TARGET_FUND_BALANCE,
 } from './calc.js';
+import { resolvePatch } from './state.js';
 
 // ─── nv: numeric coercion of everything a user or import can produce ────────
 
@@ -123,4 +124,47 @@ test('a catastrophic growth assumption cannot flip the projection sign', () => {
 test('monthlyDebtService sums the whole loan section, not four fixed keys', () => {
   const budget = { loa: { newLoan: '100', owrb: '200', bank: '50', other: '25', refinance: '75' } };
   assert.equal(monthlyDebtService(budget), 450);
+});
+
+// ─── Patch resolution (async writers vs. concurrent edits) ──────────────────
+
+test('resolvePatch passes plain values straight through', () => {
+  assert.deepEqual(resolvePatch({ a: 1 }, { b: 2, c: 'x' }), { b: 2, c: 'x' });
+});
+
+test('resolvePatch calls a function value with the CURRENT value', () => {
+  // This is what stops an AI helper from reverting the user's typing: the
+  // helper captured `systemInfo` before an await that ran for several seconds,
+  // and merging against the value at commit time keeps both changes.
+  const current = { systemInfo: { systemName: 'Typed while waiting', pwsId: '' } };
+  const patch = { systemInfo: (cur) => ({ ...cur, pwsId: 'OK1234567' }) };
+  assert.deepEqual(resolvePatch(current, patch), {
+    systemInfo: { systemName: 'Typed while waiting', pwsId: 'OK1234567' },
+  });
+});
+
+test('resolvePatch tolerates a key that does not exist yet', () => {
+  const patch = { demographics: (cur) => ({ ...(cur || {}), medianMonthlyHHI: '3000' }) };
+  assert.deepEqual(resolvePatch({}, patch), { demographics: { medianMonthlyHHI: '3000' } });
+});
+
+test('resolvePatch handles mixed function and plain values in one patch', () => {
+  const current = { systemInfo: { a: 1 }, status: 'draft' };
+  const out = resolvePatch(current, {
+    systemInfo: (cur) => ({ ...cur, b: 2 }),
+    status: 'in-progress',
+  });
+  assert.deepEqual(out, { systemInfo: { a: 1, b: 2 }, status: 'in-progress' });
+});
+
+test('resolvePatch never mutates the study it reads from', () => {
+  const current = { systemInfo: { a: 1 } };
+  resolvePatch(current, { systemInfo: (cur) => ({ ...cur, b: 2 }) });
+  assert.deepEqual(current, { systemInfo: { a: 1 } });
+});
+
+test('resolvePatch copes with an empty or absent patch', () => {
+  assert.deepEqual(resolvePatch({ a: 1 }, {}), {});
+  assert.deepEqual(resolvePatch({ a: 1 }), {});
+  assert.deepEqual(resolvePatch(), {});
 });

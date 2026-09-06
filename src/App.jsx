@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { VER } from './lib/constants.js';
-import { loadDB, saveDB, onSaveStatus, newStudy, normalizeStudy } from './lib/state.js';
+import { loadDB, saveDB, onSaveStatus, newStudy, normalizeStudy, resolvePatch } from './lib/state.js';
 import { getHost, can, deliverFile } from './platform/host.js';
 import { safeFileName } from './lib/exporters/data.js';
 import { Header } from './components/Header.jsx';
@@ -166,7 +166,10 @@ export default function App() {
   const update = (idOrStudy, patch) => {
     if (typeof idOrStudy === 'string') {
       setStudies(p => p.map(x => x.id === idOrStudy
-        ? { ...x, ...patch, updatedAt: new Date().toISOString() }
+        // resolvePatch lets a patch value be a function of the current value,
+        // so an async writer can merge into `systemInfo` rather than replace it
+        // with a snapshot taken before its await.
+        ? { ...x, ...resolvePatch(x, patch), updatedAt: new Date().toISOString() }
         : x));
     } else {
       setStudies(p => p.map(x => x.id === idOrStudy.id ? idOrStudy : x));

@@ -177,6 +177,24 @@ export function trimAiHistory(history) {
   return [safe[0], ...safe.slice(-(MAX_AI_HISTORY - 1))];
 }
 
+// Resolve a study patch against the CURRENT study.
+//
+// A patch value may be a function, which receives the current value of that key
+// and returns the new one. This exists because every async writer in the app —
+// the AI helpers in Steps 1, 2 and 3, the analysis in Step 7 — builds its patch
+// from objects captured *before* an await that takes seconds. A plain object
+// patch replaces `systemInfo` wholesale with that stale snapshot, silently
+// reverting anything the user typed into another field while the request was in
+// flight. Passing `(cur) => ({ ...cur, ...changes })` merges against whatever
+// the study actually holds at commit time instead.
+export function resolvePatch(current = {}, patch = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(patch)) {
+    out[key] = typeof value === 'function' ? value(current[key]) : value;
+  }
+  return out;
+}
+
 // ─── Persistence ─────────────────────────────────────────────────────────────
 // The storage mechanism belongs to the host: the standalone web build keeps
 // studies in this browser's localStorage, while the Power Apps code component
