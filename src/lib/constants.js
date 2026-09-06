@@ -1,4 +1,4 @@
-export const VER = '2.1.0';
+export const VER = '2.2.0';
 export const SK = 'wrs-studies-v2';
 // Grouped for the county <select>s: the 10.5 counties of the Choctaw Nation
 // reservation first, then neighboring counties whose systems OWRM sometimes

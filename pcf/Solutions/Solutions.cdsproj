@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ProjectGuid>30caaf13-2fd1-4fc5-91ae-0262c3a49b99</ProjectGuid>
+    <TargetFramework>net6.0</TargetFramework>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+  </PropertyGroup>
+
+  <!-- Managed by default so a build produces the package that gets imported
+       into TEST and PROD. Build the unmanaged variant for a DEV environment
+       with:  dotnet build /p:SolutionPackageType=Unmanaged  -->
+  <PropertyGroup>
+    <SolutionPackageType>Managed</SolutionPackageType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ExcludeDirectories Include="$(OutputPath)" />
+    <ExcludeDirectories Include="bin\**" />
+    <ExcludeDirectories Include="obj\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Every code component that ships in this solution. -->
+    <ProjectReference Include="..\WaterRateStudyTool.pcfproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.PowerApps.MSBuild.Solution" Version="1.*" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" />
+
+</Project>

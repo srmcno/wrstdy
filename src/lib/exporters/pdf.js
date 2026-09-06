@@ -770,5 +770,12 @@ export async function exportPDF(report, filename) {
   }
 
   drawFooters(pdfDoc);
-  pdfDoc.save(filename);
+  // Return the bytes rather than calling pdfDoc.save(). Who delivers the file
+  // — a browser download, or Power Apps writing it to a SharePoint document
+  // library — is the host's decision, not the exporter's.
+  return {
+    filename,
+    mimeType: 'application/pdf',
+    bytes: new Uint8Array(pdfDoc.output('arraybuffer')),
+  };
 }

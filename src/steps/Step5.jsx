@@ -1,5 +1,5 @@
 import { defBudget } from '../lib/state.js';
-import { calc5Yr, budgetTotal, nv, fmt } from '../lib/calc.js';
+import { calc5Yr, budgetTotal, targetFundBalance, forecastInflation, nv, fmt } from '../lib/calc.js';
 import { F, $I } from '../components/atoms.jsx';
 import { FundChart, RevExpChart } from '../components/Charts.jsx';
 
@@ -11,7 +11,7 @@ export function Step5({ study, onField }) {
   const proj = calc5Yr(study.classes || [], curB, propB, fc);
   const curBT = budgetTotal(curB);
   const propBT = budgetTotal(propB);
-  const target = nv(fc.targetFundBalance || 5000);
+  const target = targetFundBalance(fc);
 
   const debtService = Array.from({ length: 5 }, (_, i) => fc.debtService?.[i] ?? '');
   const updDebt = (i, v) => {
@@ -44,21 +44,25 @@ export function Step5({ study, onField }) {
       </div>
       <div className="card">
         <div className="sh">Forecast Assumptions</div>
+        {/* `?? ''`, never `|| default`: with `||` an empty field re-displayed
+            the default on the next render, so clearing "3" put "3" straight
+            back and a genuine 0% assumption could not be entered at all.
+            normalizeForecast already seeds the defaults on load. */}
         <div className="g4">
           <F label="Inflation Rate (%/yr)" hint="Applied to annual operating expenses">
-            <input className="inp" type="number" step="0.1" value={fc.inflationRate || '3'} onChange={(e) => upd('inflationRate', e.target.value)} />
+            <input className="inp" type="number" step="0.1" value={fc.inflationRate ?? ''} onChange={(e) => upd('inflationRate', e.target.value)} placeholder="3" />
           </F>
           <F label="Revenue Growth (%/yr)" hint="Usage/rateable revenue increase">
-            <input className="inp" type="number" step="0.1" value={fc.revenueGrowth || '0'} onChange={(e) => upd('revenueGrowth', e.target.value)} />
+            <input className="inp" type="number" step="0.1" value={fc.revenueGrowth ?? ''} onChange={(e) => upd('revenueGrowth', e.target.value)} placeholder="0" />
           </F>
           <F label="Account Growth (%/yr)" hint="Customer count growth; multiplied with revenue growth">
-            <input className="inp" type="number" step="0.1" value={fc.accountGrowth || '0'} onChange={(e) => upd('accountGrowth', e.target.value)} />
+            <input className="inp" type="number" step="0.1" value={fc.accountGrowth ?? ''} onChange={(e) => upd('accountGrowth', e.target.value)} placeholder="0" />
           </F>
-          <F label="Beginning Fund Balance ($)">
-            <$I value={fc.beginFundBalance || '0'} onChange={(v) => upd('beginFundBalance', v)} />
+          <F label="Beginning Fund Balance ($)" hint="Cash on hand at the start of Year 1">
+            <$I value={fc.beginFundBalance ?? ''} onChange={(v) => upd('beginFundBalance', v)} />
           </F>
           <F label="Target Fund Balance ($)" hint="Industry guidance: about 3 months of O&M expenses">
-            <$I value={fc.targetFundBalance || '5000'} onChange={(v) => upd('targetFundBalance', v)} />
+            <$I value={fc.targetFundBalance ?? ''} onChange={(v) => upd('targetFundBalance', v)} />
           </F>
           {suggestedTarget > 0 && nv(fc.targetFundBalance) !== suggestedTarget && (
             <div style={{ alignSelf: 'end', paddingBottom: 4 }}>
@@ -152,7 +156,13 @@ export function Step5({ study, onField }) {
                   </td>
                 ))}
                 <td>
-                  <button onClick={() => remKnown(idx)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }} title="Remove item">✕</button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => remKnown(idx)}
+                    title="Remove item"
+                    aria-label={`Remove one-time item ${idx + 1}`}
+                  >✕</button>
                 </td>
               </tr>
             ))}
@@ -185,7 +195,7 @@ export function Step5({ study, onField }) {
             <tr><td>Expenses (Proposed Budget)</td>{proj.propExpArr.map((v, i) => <td key={i} style={{ textAlign: 'right' }}>{fmt.c(v)}</td>)}</tr>
             <tr className="tr-s"><td>Fund Balance (Current)</td>{proj.curFBArr.map((v, i) => <td key={i} style={{ textAlign: 'right', color: v >= target ? 'var(--lime-dim)' : 'var(--red)' }}>{fmt.c(v)}</td>)}</tr>
             <tr className="tr-s"><td>Fund Balance (Proposed)</td>{proj.propFBArr.map((v, i) => <td key={i} style={{ textAlign: 'right', color: v >= target ? 'var(--lime-dim)' : 'var(--red)' }}>{fmt.c(v)}</td>)}</tr>
-            <tr><td style={{ color: 'var(--lime-dim)' }}>Target ({fmt.c(fc.targetFundBalance || 5000)})</td>{proj.targetArr.map((v, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--lime-dim)' }}>{fmt.c(v)}</td>)}</tr>
+            <tr><td style={{ color: 'var(--lime-dim)' }}>Target ({fmt.c(target)})</td>{proj.targetArr.map((v, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--lime-dim)' }}>{fmt.c(v)}</td>)}</tr>
           </tbody>
         </table>
         <div className="al al-i" style={{ marginTop: 12, fontSize: 11 }}>
@@ -200,7 +210,7 @@ export function Step5({ study, onField }) {
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 12 }}>
           Sensitivity view only (proposed budget, simple compounding): how annual expenses would escalate at 3% and 5%
           inflation — per the CNO Rate Study Final Report format. The projection above uses your forecast
-          inflation rate of {fc.inflationRate || '3'}%.
+          inflation rate of {forecastInflation(fc)}%.
         </p>
         <table className="dt">
           <thead>

@@ -1,4 +1,5 @@
 import { SK } from './constants.js';
+import { getHost, webHost } from '../platform/host.js';
 
 export const defaultTiers = () => [
   { gal: 1000, rate: '' }, { gal: 2000, rate: '' }, { gal: 3000, rate: '' },
@@ -162,25 +163,92 @@ export function newStudy(name = '') {
   return normalizeStudy({ name });
 }
 
-export const loadDB = () => {
+// The Step 7 conversation is stored on the study and travels with it — into
+// localStorage, into the .json export, and (in Power Apps) into the SharePoint
+// payload. Each analysis reply runs 3–8 KB, so an unbounded history is the one
+// field that can push a study past a storage ceiling on its own. Keep the first
+// message (the full data dump the model needs as context) plus the most recent
+// exchanges.
+export const MAX_AI_HISTORY = 24;
+
+export function trimAiHistory(history) {
+  const safe = Array.isArray(history) ? history : [];
+  if (safe.length <= MAX_AI_HISTORY) return safe;
+  return [safe[0], ...safe.slice(-(MAX_AI_HISTORY - 1))];
+}
+
+// Resolve a study patch against the CURRENT study.
+//
+// A patch value may be a function, which receives the current value of that key
+// and returns the new one. This exists because every async writer in the app —
+// the AI helpers in Steps 1, 2 and 3, the analysis in Step 7 — builds its patch
+// from objects captured *before* an await that takes seconds. A plain object
+// patch replaces `systemInfo` wholesale with that stale snapshot, silently
+// reverting anything the user typed into another field while the request was in
+// flight. Passing `(cur) => ({ ...cur, ...changes })` merges against whatever
+// the study actually holds at commit time instead.
+export function resolvePatch(current = {}, patch = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(patch)) {
+    out[key] = typeof value === 'function' ? value(current[key]) : value;
+  }
+  return out;
+}
+
+// ─── Persistence ─────────────────────────────────────────────────────────────
+// The storage mechanism belongs to the host: the standalone web build keeps
+// studies in this browser's localStorage, while the Power Apps code component
+// hands them to the canvas app (which writes them to SharePoint). Both go
+// through loadDB/saveDB so nothing above this line has to know the difference.
+
+const localLoad = () => {
   try {
     const raw = JSON.parse(localStorage.getItem(SK));
-    return Array.isArray(raw) ? raw.map(normalizeStudy) : [];
+    return Array.isArray(raw) ? raw : [];
   } catch {
     return [];
   }
 };
 
+const localSave = (studies) => {
+  try {
+    localStorage.setItem(SK, JSON.stringify(studies));
+    return true;
+  } catch (err) {
+    // Re-thrown so saveDB can report the specific failure (quota, opaque
+    // origin, storage disabled) instead of a bare `false`.
+    throw err;
+  }
+};
+
+// Register the browser implementation on the default host. Done here rather
+// than inside platform/host.js so that module stays free of app-schema
+// knowledge (the storage key and the normalize-on-read migration).
+webHost.loadStudies = localLoad;
+webHost.saveStudies = localSave;
+
+export const loadDB = () => {
+  const host = getHost();
+  try {
+    const raw = host.loadStudies ? host.loadStudies() : [];
+    return Array.isArray(raw) ? raw.map(normalizeStudy) : [];
+  } catch (err) {
+    console.error('loadStudies failed', err);
+    return [];
+  }
+};
+
 // Save listeners — UI components subscribe to surface persistence failures
-// (quota exceeded, opaque origin, disabled storage) instead of silently
-// dropping data.
+// (quota exceeded, opaque origin, disabled storage, a rejected Power Apps
+// write) instead of silently dropping data.
 const saveListeners = new Set();
 export function onSaveStatus(fn) { saveListeners.add(fn); return () => saveListeners.delete(fn); }
 function notify(status, err) { saveListeners.forEach(fn => { try { fn(status, err); } catch { /* ignore */ } }); }
 
 export const saveDB = (s) => {
+  const host = getHost();
   try {
-    localStorage.setItem(SK, JSON.stringify(s));
+    if (host.saveStudies) host.saveStudies(s);
     notify('ok', null);
     return true;
   } catch (err) {

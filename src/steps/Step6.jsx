@@ -8,7 +8,19 @@ export function Step6({ study, onField }) {
   const classes = study.classes || [];
   const mhi = study.demographics?.medianMonthlyHHI;
   const propBT = budgetTotal(study.propBudget || defBudget());
-  const defaultAdjustments = { res: 1, pas: 1, com: 1, who: 1, c5: 1, c6: 1, c7: 1 };
+  // Preset multipliers, built from the classes this study actually has.
+  //
+  // The presets used to carry a hard-coded {res, pas, com, who, c5, c6, c7}
+  // map. A class added by bulk import — a sewer or bulk-water class with its
+  // own id — was therefore absent from every preset, so applying one silently
+  // dropped that class out of the scenario's adjustment set and it fell back
+  // to 1.00 with no indication why.
+  const presetAdjustments = (overrides = {}) => ({
+    ...DEFAULT_SCENARIO_ADJUSTMENTS,
+    ...Object.fromEntries(classes.filter(c => c?.id).map(c => [c.id, 1])),
+    ...overrides,
+  });
+  const defaultAdjustments = presetAdjustments();
   // Initialize from the persisted scenario so the modeled scenario survives
   // navigation and flows into the Final Report / PDF / DOCX exports (which
   // read study.activeScenario via buildReport).
@@ -48,10 +60,10 @@ export function Step6({ study, onField }) {
   const propRevAdj = classes.filter(c => c.enabled).reduce((s, c) => s + scenarioIncome(c), 0);
   const net = propRevAdj - propBT.total;
   const presets = [
-    { label: 'Shift to Residential', action: () => applyScenario({ res: 1.15, pas: 1, com: 0.95, who: 0.95, c5: 1, c6: 1, c7: 1 }, 'proposed', 'Shift to Residential'), hint: '+15% res, −5% com/who' },
-    { label: 'Shift to Commercial', action: () => applyScenario({ res: 0.95, pas: 1, com: 1.20, who: 1.10, c5: 1, c6: 1, c7: 1 }, 'proposed', 'Shift to Commercial'), hint: '−5% res, +20% com' },
+    { label: 'Shift to Residential', action: () => applyScenario(presetAdjustments({ res: 1.15, com: 0.95, who: 0.95 }), 'proposed', 'Shift to Residential'), hint: '+15% res, −5% com/who' },
+    { label: 'Shift to Commercial', action: () => applyScenario(presetAdjustments({ res: 0.95, com: 1.20, who: 1.10 }), 'proposed', 'Shift to Commercial'), hint: '−5% res, +20% com' },
     { label: 'Hold Current Rates', action: () => applyScenario(defaultAdjustments, 'current', 'Hold Current Rates'), hint: 'Use current rates as basis' },
-    { label: 'High Burden', action: () => applyScenario({ res: 1.25, pas: 1.10, com: 1.15, who: 1.10, c5: 1, c6: 1, c7: 1 }, 'proposed', 'High Burden'), hint: '+25% res, +15% com' },
+    { label: 'High Burden', action: () => applyScenario(presetAdjustments({ res: 1.25, pas: 1.10, com: 1.15, who: 1.10 }), 'proposed', 'High Burden'), hint: '+25% res, +15% com' },
     { label: 'Reset', action: () => applyScenario(defaultAdjustments, 'proposed', 'Proposed (baseline)'), hint: 'Back to proposed (1.00× across)' }
   ];
   return (

@@ -1,4 +1,23 @@
-export const nv = (v) => parseFloat(v) || 0;
+// Numeric coercion for every value that reaches a calculation.
+//
+// Values arrive from <input>s (always strings), from JSON import, from AI
+// suggestions, and from spreadsheet paste — so "$1,234.50", "1,234", and the
+// accounting form "(1,234.50)" for a negative all show up in practice.
+// `parseFloat('1,234')` returns 1, which silently turned a $1,234 line item
+// into $1, so strip currency punctuation before parsing and honor parentheses
+// as a negative sign. Anything still unparseable is 0.
+export const nv = (v) => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  if (v == null) return 0;
+  let s = String(v).trim();
+  if (!s) return 0;
+  let sign = 1;
+  // Accounting negatives: (1,234.50) === -1234.50
+  if (s.startsWith('(') && s.endsWith(')')) { sign = -1; s = s.slice(1, -1); }
+  s = s.replace(/[$\s,]/g, '');
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? sign * n : 0;
+};
 
 // Normalize a tier list for billing: numeric breakpoints, sorted ascending,
 // non-increasing/zero breakpoints dropped. Unsorted or duplicate breakpoints
@@ -251,9 +270,16 @@ export function operatingRatio(rev, expTotal) {
   return expTotal > 0 ? rev / expTotal : null;
 }
 
+// Monthly debt service = every line in the budget's loan/debt section. Summing
+// the whole section (rather than four hard-coded keys) means a study that
+// carries an extra debt line — added by an import, a newer schema, or a future
+// UI field — is still counted instead of silently dropped from DTI.
+export function monthlyDebtService(budget) {
+  return budgetTotal(budget).loa;
+}
+
 export function debtToIncome(budget, rev) {
-  const loa = budget?.loa || {};
-  const debt = nv(loa.newLoan) + nv(loa.owrb) + nv(loa.bank) + nv(loa.other);
+  const debt = monthlyDebtService(budget);
   return rev > 0 ? debt / rev : null;
 }
 
@@ -310,11 +336,37 @@ export function trueCostOfService(budget, classes = [], isProposed) {
 // it replaces the budget's loan/debt lines for that year (debt payments are
 // set by amortization schedules, not inflation). Known one-time items add to
 // (positive) or offset (negative) that year's expenses for both tracks.
+// Forecast defaults live here so every consumer agrees.
+//
+// Previously calc5Yr read `nv(forecast.targetFundBalance)` (blank → 0) while
+// Step 4, Step 5, Step 8, and the exports each read
+// `nv(forecast.targetFundBalance || 5000)` (blank → 5000). A study with no
+// target entered therefore drew the target line at $0 on the chart while every
+// label beside it read "$5,000.00", and the FY5 "on target / below target"
+// verdict was computed against a different number than the one shown.
+export const DEFAULT_TARGET_FUND_BALANCE = 5000;
+export const DEFAULT_INFLATION_RATE = 3;
+
+const blank = (v) => String(v ?? '').trim() === '';
+
+export function targetFundBalance(forecast = {}) {
+  return blank(forecast?.targetFundBalance) ? DEFAULT_TARGET_FUND_BALANCE : nv(forecast.targetFundBalance);
+}
+
+export function forecastInflation(forecast = {}) {
+  return blank(forecast?.inflationRate) ? DEFAULT_INFLATION_RATE : nv(forecast.inflationRate);
+}
+
+// A growth/inflation assumption of -100% or worse would make the compounding
+// factor zero or negative, and Math.pow with a negative base flips sign every
+// other year — the projection table would alternate between positive and
+// negative expenses with no explanation. Nothing below a 100% annual decline
+// is meaningful here, so clamp the factor at 0.
+const growthFactor = (pct) => Math.max(0, 1 + nv(pct) / 100);
+
 export function calc5Yr(classes, curBudget, propBudget, forecast = {}) {
-  const inf = 1 + nv(forecast.inflationRate) / 100;
-  const revenueGrowth = nv(forecast.revenueGrowth) / 100;
-  const accountGrowth = nv(forecast.accountGrowth) / 100;
-  const revGrowthFactor = (1 + revenueGrowth) * (1 + accountGrowth);
+  const inf = growthFactor(forecastInflation(forecast));
+  const revGrowthFactor = growthFactor(forecast.revenueGrowth) * growthFactor(forecast.accountGrowth);
   const curRev = totalRevenue(classes, false).annual;
   const propRev = totalRevenue(classes, true).annual;
   const curBT = budgetTotal(curBudget);
@@ -325,7 +377,7 @@ export function calc5Yr(classes, curBudget, propBudget, forecast = {}) {
   const knownAt = (i) => knownRows.reduce((s, item) => s + nv(item?.vals?.[i]), 0);
 
   let beginFB = nv(forecast.beginFundBalance);
-  const target = nv(forecast.targetFundBalance);
+  const target = targetFundBalance(forecast);
   const yrs = ['FY1', 'FY2', 'FY3', 'FY4', 'FY5'];
   const rows = {
     curRevArr: [], propRevArr: [],
@@ -379,16 +431,42 @@ export function calcHML(cls = {}, isProposed, mhi) {
   };
 }
 
+// Currency with the sign OUTSIDE the dollar symbol: -$1,234.00, not $-1,234.00.
+// Board documents and every accounting package write it the first way; the
+// second reads as a typo and showed up in every delta/shortfall column.
+const money = (v, digits = 2) => {
+  const n = nv(v);
+  const abs = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return (n < 0 ? '-$' : '$') + abs;
+};
+
+// Dates: an unparseable or partial value must render as '' rather than the
+// literal string "Invalid Date" (which reached the sidebar and PDF headers).
+const asDate = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 export const fmt = {
-  c: (v) => '$' + nv(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  c: (v) => money(v),
   p: (v) => (nv(v) * 100).toFixed(2) + '%',
   px: (v) => nv(v).toFixed(2) + '%',
-  n: (v) => nv(v).toLocaleString('en-US'),
-  r: (v) => '$' + nv(v).toFixed(2),
+  n: (v) => Math.round(nv(v)).toLocaleString('en-US'),
+  r: (v) => money(v),
+  // Explicitly signed money for Δ / change columns: +$12.00, -$12.00, $0.00.
+  signed: (v) => { const n = nv(v); return (n > 0 ? '+' : '') + money(n); },
+  // Signed percentage change of `delta` against `base`; null base → '—'.
+  pctOf: (delta, base, dash = '—') => {
+    const b = nv(base);
+    if (!(Math.abs(b) > 0)) return dash;
+    const p = (nv(delta) / b) * 100;
+    return (p > 0 ? '+' : '') + p.toFixed(1) + '%';
+  },
   // Null-aware variants: metrics return null when their inputs are missing.
   ratio: (v, dash = '—') => (v == null ? dash : nv(v).toFixed(2)),
   pd: (v, dash = '—') => (v == null ? dash : (nv(v) * 100).toFixed(2) + '%'),
-  cd: (v, dash = '—') => (v == null ? dash : fmt.c(v)),
-  date: (iso) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
-  short: (iso) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }) : ''
+  cd: (v, dash = '—') => (v == null ? dash : money(v)),
+  date: (iso) => { const d = asDate(iso); return d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''; },
+  short: (iso) => { const d = asDate(iso); return d ? d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }) : ''; }
 };

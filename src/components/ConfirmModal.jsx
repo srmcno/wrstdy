@@ -29,9 +29,11 @@ export function ConfirmModal({
         if (!a || !b) return;
         if (e.shiftKey && document.activeElement === a) { e.preventDefault(); b.focus(); }
         else if (!e.shiftKey && document.activeElement === b) { e.preventDefault(); a.focus(); }
-      } else if (e.key === 'Enter' && document.activeElement === confirmRef.current) {
-        handleConfirm();
       }
+      // Enter is deliberately NOT handled here. Pressing Enter on a focused
+      // <button> already dispatches a click, so an Enter branch ran the
+      // confirm action a second time — two deletes, two Cur→Prop copies, two
+      // "cleared conversation" writes from one keypress.
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

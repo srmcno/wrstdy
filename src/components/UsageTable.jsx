@@ -78,7 +78,13 @@ export function UsageTable({ usage, onChange, curSide, propSide }) {
                       value={r.note || ''} onChange={(e) => upd(i, 'note', e.target.value)} placeholder="e.g. May billing register" />
                   </td>
                   <td>
-                    <button onClick={() => remRow(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }} title="Remove row">✕</button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => remRow(i)}
+                      title="Remove row"
+                      aria-label={`Remove usage row ${i + 1}`}
+                    >✕</button>
                   </td>
                 </tr>
               );

@@ -15,7 +15,7 @@ export const F = ({ label, hint, required, children }) => {
   );
 };
 
-export const $I = ({ value, onChange, placeholder = '0.00', id, required }) => (
+export const $I = ({ value, onChange, placeholder = '0.00', id, required, disabled, title }) => (
   <div className="cw">
     <span className="cs" aria-hidden="true">$</span>
     <input
@@ -24,12 +24,15 @@ export const $I = ({ value, onChange, placeholder = '0.00', id, required }) => (
       type="number"
       min="0"
       step="0.01"
-      value={value}
+      disabled={disabled}
+      title={title}
+      // `?? ''` keeps this a controlled input. An undefined value (a budget
+      // section a study predates, a cleared field) made React switch the input
+      // to uncontrolled mid-session, after which typing stopped updating state.
+      value={value ?? ''}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       required={required}
     />
   </div>
 );
-
-export const Hr = () => <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />;

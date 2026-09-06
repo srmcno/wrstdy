@@ -46,7 +46,10 @@ export function Sidebar({ studies, activeId, onSelect, onCreate, onImportFile, o
       <div className="sb-ft">
         <div className="sb-lb" style={{ marginBottom: 7 }}>File</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button className="btn b-ghost btn-sm" onClick={onImportFile}>↑ Import Study (.json)</button>
+          {/* Hosts without a local file picker (the Power Apps code component)
+              pass null rather than a handler, so the button is not offered at
+              all instead of failing silently when clicked. */}
+          {onImportFile && <button className="btn b-ghost btn-sm" onClick={onImportFile}>↑ Import Study (.json)</button>}
           {activeId && <button className="btn b-ghost btn-sm" onClick={() => onExport(activeId)}>↓ Export Study (.json)</button>}
           {studies.length > 1 && <button className="btn b-ghost btn-sm" onClick={() => onExport(null)}>↓ Export All</button>}
         </div>

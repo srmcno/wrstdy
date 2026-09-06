@@ -1,0 +1,22 @@
+/* Page-level styles for the STANDALONE build only (dev server, static host,
+ * single-file HTML). The Power Apps code component must never load these — it
+ * is a component on someone else's page and has no business setting body
+ * height, page background, or print rules for the whole document.
+ */
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: linear-gradient(150deg, #eef1f3, #dfe4e8, #eaecef) fixed;
+  font-family: 'Gill Sans MT', 'Gill Sans Nova', 'Gill Sans', 'Trebuchet MS', sans-serif;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+#root { display: flex; flex-direction: column; overflow: hidden; }
+
+@media print {
+  @page { margin: 0.6in; }
+  html, body, #root { height: auto; overflow: visible; }
+  body { background: #fff !important; }
+}

@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest>
+  <!--
+    Water Rate Study Tool — Power Apps code component (canvas apps).
+
+    control-type is "standard", not "virtual", on purpose: the platform React
+    library offered to virtual components is 16.14.0 (canvas) / 17.0.2 (model),
+    and this application uses React 18 APIs (createRoot, useId,
+    useSyncExternalStore). A standard component bundles its own React, which
+    the framework explicitly supports.
+
+    The component holds no credentials and calls no external service itself —
+    persistence, file storage, and AI analysis are all requests handed back to
+    the canvas app through the output properties below. See
+    docs/POWER-APPS-INTEGRATION.md for the formulas that wire them up, and
+    docs/SHAREPOINT-BACKEND.md for the lists and libraries behind them.
+  -->
+  <control namespace="ChoctawNationOWRM"
+           constructor="WaterRateStudyTool"
+           version="2.2.0"
+           display-name-key="WaterRateStudyTool_Display_Name"
+           description-key="WaterRateStudyTool_Desc"
+           control-type="standard">
+
+    <!-- No direct calls to services outside the Power Platform. -->
+    <external-service-usage enabled="false" />
+
+    <!-- ── Inputs ───────────────────────────────────────────────────────── -->
+
+    <property name="StudiesJson"
+              display-name-key="Studies (JSON)"
+              description-key="The rate study to edit, as JSON. Accepts one study object, an array of studies, or an export envelope. Bind to the SharePoint column holding the study payload."
+              of-type="Multiple"
+              usage="input"
+              required="false" />
+
+    <property name="Mode"
+              display-name-key="Mode"
+              description-key="Single: edit one study; the app owns the study list. Workspace: the component shows its own study list and dashboard."
+              of-type="Enum"
+              usage="input"
+              required="false"
+              default-value="single">
+      <value name="Single" display-name-key="Single study" default="true">single</value>
+      <value name="Workspace" display-name-key="Study workspace">workspace</value>
+    </property>
+
+    <property name="ReadOnly"
+              display-name-key="Read only"
+              description-key="Show the study without allowing edits — for reviewers, or while the record is locked by someone else."
+              of-type="TwoOptions"
+              usage="input"
+              required="false"
+              default-value="false" />
+
+    <property name="AiResponseId"
+              display-name-key="AI response ID"
+              description-key="Echo of AI request ID once the flow has finished. Changing this delivers the reply to the waiting request."
+              of-type="SingleLine.Text"
+              usage="input"
+              required="false" />
+
+    <property name="AiResponseText"
+              display-name-key="AI response text"
+              description-key="The analysis text returned by the Power Automate flow for the matching AI request ID."
+              of-type="Multiple"
+              usage="input"
+              required="false" />
+
+    <property name="AiResponseError"
+              display-name-key="AI response error"
+              description-key="Set this instead of AI response text when the flow failed; the message is shown to the user."
+              of-type="SingleLine.Text"
+              usage="input"
+              required="false" />
+
+    <!-- ── Outputs ──────────────────────────────────────────────────────── -->
+
+    <property name="StudiesJsonOut"
+              display-name-key="Studies out (JSON)"
+              description-key="The edited study payload. Patch this back to SharePoint in OnChange when Last event is 'save'."
+              of-type="Multiple"
+              usage="output" />
+
+    <property name="ChangedStudyId"
+              display-name-key="Changed study ID"
+              description-key="ID of the study the last change belongs to."
+              of-type="SingleLine.Text"
+              usage="output" />
+
+    <property name="StudyCount"
+              display-name-key="Study count"
+              description-key="Number of studies currently loaded in the component."
+              of-type="Whole.None"
+              usage="output" />
+
+    <property name="LastEvent"
+              display-name-key="Last event"
+              description-key="What the component last asked the app to do: save, file, or ai-request."
+              of-type="SingleLine.Text"
+              usage="output" />
+
+    <property name="LastEventAt"
+              display-name-key="Last event at"
+              description-key="ISO timestamp of the last event. Always changes, so OnChange fires even when two identical events occur in a row."
+              of-type="SingleLine.Text"
+              usage="output" />
+
+    <property name="FileName"
+              display-name-key="File name"
+              description-key="Name of the generated file when Last event is 'file'."
+              of-type="SingleLine.Text"
+              usage="output" />
+
+    <property name="FileMimeType"
+              display-name-key="File MIME type"
+              description-key="MIME type of the generated file."
+              of-type="SingleLine.Text"
+              usage="output" />
+
+    <property name="FileBase64"
+              display-name-key="File contents (base64)"
+              description-key="Base64 contents of the generated file. Save with SharePointIntegration or a Power Automate flow."
+              of-type="Multiple"
+              usage="output" />
+
+    <property name="FileSizeBytes"
+              display-name-key="File size (bytes)"
+              description-key="Decoded size of the generated file."
+              of-type="Whole.None"
+              usage="output" />
+
+    <property name="AiRequestId"
+              display-name-key="AI request ID"
+              description-key="Correlation ID for the pending analysis request. Pass it back as AI response ID with the reply."
+              of-type="SingleLine.Text"
+              usage="output" />
+
+    <property name="AiRequestJson"
+              display-name-key="AI request (JSON)"
+              description-key="The analysis request: { id, system, messages, maxTokens }. Send it to your approved model through a Power Automate flow."
+              of-type="Multiple"
+              usage="output" />
+
+    <resources>
+      <code path="index.ts" order="1" />
+      <resx path="strings/WaterRateStudyTool.1033.resx" version="2.2.0" />
+    </resources>
+  </control>
+</manifest>

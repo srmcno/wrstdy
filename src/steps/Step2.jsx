@@ -11,6 +11,8 @@ import { UsageTable } from '../components/UsageTable.jsx';
 import { ConfirmModal } from '../components/ConfirmModal.jsx';
 import { ask, hasApiKey, MODEL_HEAVY } from '../lib/ai.js';
 import { pushToast } from '../components/Toasts.jsx';
+import { deliverFile } from '../platform/host.js';
+import { safeFileName } from '../lib/exporters/data.js';
 
 // True for the user-defined slots c5/c6/c7 only (NOT 'com' for Commercial).
 const isCustomSlot = (id) => /^c\d/.test(id);
@@ -22,7 +24,7 @@ const csvQuote = (v) => {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-function exportClassesCsv(classes, study) {
+async function exportClassesCsv(classes, study) {
   const enabled = (classes || []).filter(c => c.enabled);
   if (enabled.length === 0) {
     pushToast('No enabled customer classes to export.', { kind: 'warn' });
@@ -45,17 +47,18 @@ function exportClassesCsv(classes, study) {
       rows.push([c.id, c.name || '', side, s.customers ?? '', s.gallonsSold ?? '', s.minCharge ?? '', ...flat]);
     }
   }
-  const csv = rows.map(r => r.map(csvQuote).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const safe = (study.systemInfo?.systemName || study.name || 'rate-study').replace(/[^a-z0-9]/gi, '-').toLowerCase();
-  const filename = `${safe}-tier-rates.csv`;
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-  pushToast(`Exported ${filename}`);
+  // CRLF + a UTF-8 BOM: Excel on Windows is the destination for every one of
+  // these files, and without the BOM it renders names with accents as mojibake.
+  const csv = '﻿' + rows.map(r => r.map(csvQuote).join(',')).join('\r\n');
+  const filename = `${safeFileName(study.systemInfo?.systemName || study.name || 'rate-study')}-tier-rates.csv`;
+  const result = await deliverFile({
+    filename,
+    mimeType: 'text/csv;charset=utf-8',
+    text: csv,
+    kind: 'rate-table-csv',
+    studyId: study.id,
+  });
+  pushToast(result.message, { kind: result.ok ? 'ok' : 'err' });
 }
 const cloneSide = (s) => ({
   customers: s.customers || '',
@@ -122,30 +125,56 @@ export function Step2({ study, onField }) {
     const rows = importText.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
     if (rows.length === 0) { setShowImport(false); return; }
     const parsed = rows.map(r => r.split(/[,\t]/).map(s => s.trim()));
-    let nc = classes.map(c => ({ ...c }));
+    const nc = classes.map(c => ({ ...c }));
+    // Each import row consumes a distinct class. Without this set, two rows
+    // whose names both failed to match (say "Sewer" and "Bulk") were written
+    // into the SAME first-disabled slot and the first row silently vanished.
+    const claimed = new Set();
+    let applied = 0;
+    let skipped = 0;
     parsed.forEach((row) => {
-      if (row.length < 2) return;
+      if (row.length < 2) { skipped++; return; }
       const [name, customers, gallons, minCharge, ...rates] = row;
-      // Try to match by name (case-insensitive prefix); else first empty/disabled class
-      let target = nc.find(c => (c.name || '').toLowerCase().startsWith(name.toLowerCase()) && name.length > 0);
-      if (!target) target = nc.find(c => !c.enabled);
-      if (!target) return;
+      // Header rows are a normal thing to paste along with the data.
+      if (/^(name|class|customer\s*class)$/i.test(name || '')) return;
+      // Match by name prefix first; otherwise take the next unclaimed slot.
+      let target = name
+        ? nc.find(c => !claimed.has(c.id) && (c.name || '').toLowerCase().startsWith(name.toLowerCase()))
+        : null;
+      if (!target) target = nc.find(c => !claimed.has(c.id) && !c.enabled);
+      if (!target) { skipped++; return; }
+      claimed.add(target.id);
+      // Take the name from the file whenever the slot is being newly enabled.
+      // Previously `target.name || name` kept the stock label, so importing a
+      // "Sewer" row into the unused "Pasture Tap" slot produced a class
+      // holding sewer rates but still labelled "Pasture Tap" on every report.
+      if (name && (!target.enabled || !target.name)) target.name = name;
       target.enabled = true;
-      target.name = target.name || name;
       const side = {
         customers: customers || '',
         gallonsSold: gallons || '',
         minCharge: minCharge || '',
         tiers: rates.length > 0
           ? rates.map(parseTierCell).filter(t => t.gal > 0).sort((a, b) => a.gal - b.gal)
-          : (target.cur.tiers && target.cur.tiers.length ? target.cur.tiers.map(t => ({ ...t })) : defaultTiers()),
+          : (target.cur?.tiers?.length ? target.cur.tiers.map(t => ({ ...t })) : defaultTiers()),
       };
       target.cur = side;
       target.prop = cloneSide(side);
+      applied++;
     });
+    if (applied === 0) {
+      pushToast('Nothing imported — no row matched a class and no empty class slots are left.', { kind: 'warn' });
+      return;
+    }
     onField('classes', nc);
     setImportText('');
     setShowImport(false);
+    pushToast(
+      skipped > 0
+        ? `Imported ${applied} class${applied === 1 ? '' : 'es'}; ${skipped} row(s) skipped (malformed or no free class slot).`
+        : `Imported ${applied} class${applied === 1 ? '' : 'es'}. Review the Proposed tab — it was seeded from the imported values.`,
+      { kind: skipped > 0 ? 'warn' : 'ok' },
+    );
   };
 
   const d = tab === 'prop' ? sel.prop : sel.cur;
@@ -323,39 +352,45 @@ Propose new rates for this class only.`;
         <div style={{ width: 190, flexShrink: 0 }}>
           <div className="card" style={{ padding: 12 }}>
             <div className="sh" style={{ marginBottom: 10 }}>Customer Classes</div>
+            {/* Each row is a checkbox + a rename field + an explicit "open"
+                button. The previous markup nested a text input inside a
+                clickable div, which meant the row could only be selected with
+                a mouse, and clicking anywhere near the name toggled selection
+                instead of placing the caret. */}
             {classes.map(c => (
-              <div key={c.id} style={{ marginBottom: 6 }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6,
-                  background: c.id === selId ? 'var(--lime-pale)' : '',
-                  cursor: 'pointer',
-                  border: `1px solid ${c.id === selId ? '#86efac' : 'transparent'}`
-                }}>
+              <div key={c.id} className={'cls-row' + (c.id === sel?.id ? ' on' : '')} style={{ marginBottom: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={c.enabled}
+                  onChange={() => toggleClass(c.id)}
+                  aria-label={`Include ${c.name || classPlaceholder(c)} in this study`}
+                  title={c.enabled ? 'Included in this study' : 'Not included in this study'}
+                />
+                <div className="cls-name">
                   <input
-                    type="checkbox"
-                    checked={c.enabled}
-                    onChange={() => toggleClass(c.id)}
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => e.stopPropagation()}
+                    className="cls-name-inp"
+                    value={c.name}
+                    onChange={(e) => {
+                      const nc = classes.map(x => x.id === c.id ? { ...x, name: e.target.value } : x);
+                      onField('classes', nc);
+                    }}
+                    onFocus={() => setSelId(c.id)}
+                    placeholder={classPlaceholder(c)}
+                    aria-label={`Name for customer class ${c.id}`}
+                    title="Class names are editable — rename to match your system (e.g. sewer classes)"
+                    style={{ color: c.enabled ? 'var(--text)' : 'var(--mid)' }}
                   />
-                  <div
-                    style={{ flex: 1, fontSize: 12, color: c.enabled ? 'var(--text)' : 'var(--dim)', cursor: 'pointer' }}
-                    onClick={() => setSelId(c.id)}
-                  >
-                    <input
-                      className="inp"
-                      value={c.name}
-                      onChange={(e) => {
-                        const nc = classes.map(x => x.id === c.id ? { ...x, name: e.target.value } : x);
-                        onField('classes', nc);
-                      }}
-                      placeholder={classPlaceholder(c)}
-                      title="Class names are editable — rename to match your system (e.g. sewer classes)"
-                      style={{ fontSize: 11, padding: '2px 6px', border: 'none', background: 'transparent', width: '100%', color: 'inherit' }}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="cls-pick"
+                  onClick={() => setSelId(c.id)}
+                  aria-label={`Edit rates for ${c.name || classPlaceholder(c)}`}
+                  aria-pressed={c.id === sel?.id}
+                  title="Edit this class's rates"
+                >
+                  ✎
+                </button>
               </div>
             ))}
           </div>
@@ -750,7 +785,7 @@ function CompareView({ cls, mhi, onUpd, onTier, onTierGal }) {
               return (
                 <tr key={i}>
                   <td style={{ width: 100 }}>
-                    <CmpInput value={t.gal} onChange={(v) => onTierGal(i, Number(v))} step="1000" />
+                    <CmpInput value={t.gal} onChange={(v) => onTierGal(i, v)} step="1000" />
                   </td>
                   <td style={{ width: 130 }}>
                     <CmpInput value={t.curRate} onChange={(v) => onTier('cur', i, 'rate', v)} money step="0.01" />

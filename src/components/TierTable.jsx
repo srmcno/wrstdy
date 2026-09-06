@@ -72,9 +72,13 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
                   min="0"
                   step="500"
                   style={{ fontSize: 12, padding: '4px 8px' }}
-                  value={t.gal}
-                  onChange={(e) => updTier(i, 'gal', Number(e.target.value))}
+                  value={t.gal ?? ''}
+                  /* Store the raw string. Number('') is 0, so coercing here
+                     turned a cleared breakpoint into a literal "0" in the box
+                     that the user then had to delete before typing. */
+                  onChange={(e) => updTier(i, 'gal', e.target.value)}
                   placeholder="1000"
+                  aria-label={`Block ${i + 1} upper limit in gallons`}
                 />
               </td>
               <td>
@@ -96,9 +100,10 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
                     min="0"
                     step="0.01"
                     style={{ fontSize: 12, padding: '4px 8px 4px 18px' }}
-                    value={t.rate}
+                    value={t.rate ?? ''}
                     onChange={(e) => updTier(i, 'rate', e.target.value)}
                     placeholder="0.00"
+                    aria-label={`Block ${i + 1} rate per 1,000 gallons`}
                   />
                 </div>
               </td>
@@ -114,7 +119,13 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
               </td>
               <td>
                 {tiers.length > 1 && (
-                  <button onClick={() => remTier(i)} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }} title="Remove this block">✕</button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => remTier(i)}
+                    title="Remove this block"
+                    aria-label={`Remove tier block ${i + 1}`}
+                  >✕</button>
                 )}
               </td>
             </tr>
