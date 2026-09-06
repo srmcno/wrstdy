@@ -666,6 +666,25 @@ existing columns and data alone. It does **not** create the site, set
 permissions, or build the flows — those are deliberate manual steps (§2, §6,
 §5) that deserve a human decision.
 
+### Verifying a change to the script
+
+`docs/provision-sharepoint.Tests.ps1` runs the whole provisioning script
+offline against stubbed PnP cmdlets — no tenant, no connection, no side
+effects. It generates every field definition with its real arguments and
+checks that the CAML parses, that internal names match what this document and
+the flows reference, that no lookup points at a list the script never creates,
+and that no view references a column that does not exist.
+
+```powershell
+pwsh -File docs/provision-sharepoint.Tests.ps1
+```
+
+Run it after editing the script. It exists because a description containing an
+apostrophe — `"The tool's own study GUID"` — silently produced malformed CAML
+and would have failed on `StudyId`, the column the whole payload design keys
+off. Attribute values are XML-escaped now, and this is what keeps them that
+way.
+
 ---
 
 ## 11. Checklist

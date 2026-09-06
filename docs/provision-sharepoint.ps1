@@ -88,16 +88,25 @@ function Ensure-Field {
     Add-PnPFieldFromXml -List $ListUrl -FieldXml $Xml -ErrorAction Stop | Out-Null
 }
 
+# CAML attribute values here are single-quoted, so an apostrophe, ampersand, or
+# angle bracket in a display name or description terminates the attribute and
+# Add-PnPFieldFromXml rejects the whole field. The apostrophe is the one that
+# actually bites: "The tool's own study GUID" produced
+#   Description='The tool's own study GUID'
+# which is malformed XML, and that description is on StudyId — the column the
+# entire payload design keys off.
+function Esc { param([string] $Value) [System.Security.SecurityElement]::Escape($Value) }
+
 function New-TextFieldXml {
     param([string] $Name, [string] $Display, [int] $MaxLength = 255, [switch] $Required, [switch] $Unique, [string] $Description = '')
     $req = if ($Required) { 'TRUE' } else { 'FALSE' }
     $uniq = if ($Unique) { 'TRUE' } else { 'FALSE' }
-    "<Field Type='Text' Name='$Name' StaticName='$Name' DisplayName='$Display' MaxLength='$MaxLength' Required='$req' EnforceUniqueValues='$uniq' Indexed='$uniq' Description='$Description' />"
+    "<Field Type='Text' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' MaxLength='$MaxLength' Required='$req' EnforceUniqueValues='$uniq' Indexed='$uniq' Description='$(Esc $Description)' />"
 }
 
 function New-NoteFieldXml {
     param([string] $Name, [string] $Display, [int] $Rows = 6, [string] $Description = '')
-    "<Field Type='Note' Name='$Name' StaticName='$Name' DisplayName='$Display' NumLines='$Rows' RichText='FALSE' RichTextMode='Compatible' AppendOnly='FALSE' Description='$Description' />"
+    "<Field Type='Note' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' NumLines='$Rows' RichText='FALSE' RichTextMode='Compatible' AppendOnly='FALSE' Description='$(Esc $Description)' />"
 }
 
 function New-NumberFieldXml {
@@ -110,12 +119,12 @@ function New-NumberFieldXml {
     if (-not [string]::IsNullOrWhiteSpace($Min)) { $range += " Min='$Min'" }
     if (-not [string]::IsNullOrWhiteSpace($Max)) { $range += " Max='$Max'" }
     $pct = if ($Percentage) { "TRUE" } else { "FALSE" }
-    "<Field Type='Number' Name='$Name' StaticName='$Name' DisplayName='$Display' Decimals='$Decimals' Percentage='$pct' Required='$req'$range Description='$Description' />"
+    "<Field Type='Number' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' Decimals='$Decimals' Percentage='$pct' Required='$req'$range Description='$(Esc $Description)' />"
 }
 
 function New-CurrencyFieldXml {
     param([string] $Name, [string] $Display, [string] $Description = '')
-    "<Field Type='Currency' Name='$Name' StaticName='$Name' DisplayName='$Display' Decimals='2' LCID='1033' Description='$Description' />"
+    "<Field Type='Currency' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' Decimals='2' LCID='1033' Description='$(Esc $Description)' />"
 }
 
 function New-ChoiceFieldXml {
@@ -124,7 +133,7 @@ function New-ChoiceFieldXml {
     $items = ($Choices | ForEach-Object { "      <CHOICE>$([System.Security.SecurityElement]::Escape($_))</CHOICE>" }) -join "`n"
     $def = if ($Default) { "  <Default>$([System.Security.SecurityElement]::Escape($Default))</Default>`n" } else { '' }
     @"
-<Field Type='Choice' Name='$Name' StaticName='$Name' DisplayName='$Display' Format='Dropdown' FillInChoice='FALSE' Required='$req' Description='$Description'>
+<Field Type='Choice' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' Format='Dropdown' FillInChoice='FALSE' Required='$req' Description='$(Esc $Description)'>
 $def  <CHOICES>
 $items
   </CHOICES>
@@ -134,23 +143,23 @@ $items
 
 function New-DateFieldXml {
     param([string] $Name, [string] $Display, [ValidateSet('DateOnly', 'DateTime')][string] $Format = 'DateOnly', [string] $Description = '')
-    "<Field Type='DateTime' Name='$Name' StaticName='$Name' DisplayName='$Display' Format='$Format' Description='$Description' />"
+    "<Field Type='DateTime' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' Format='$Format' Description='$(Esc $Description)' />"
 }
 
 function New-BooleanFieldXml {
     param([string] $Name, [string] $Display, [bool] $Default = $false, [string] $Description = '')
     $d = if ($Default) { '1' } else { '0' }
-    "<Field Type='Boolean' Name='$Name' StaticName='$Name' DisplayName='$Display' Description='$Description'><Default>$d</Default></Field>"
+    "<Field Type='Boolean' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' Description='$(Esc $Description)'><Default>$d</Default></Field>"
 }
 
 function New-UserFieldXml {
     param([string] $Name, [string] $Display, [string] $Description = '')
-    "<Field Type='User' Name='$Name' StaticName='$Name' DisplayName='$Display' UserSelectionMode='PeopleOnly' Mult='FALSE' Description='$Description' />"
+    "<Field Type='User' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' UserSelectionMode='PeopleOnly' Mult='FALSE' Description='$(Esc $Description)' />"
 }
 
 function New-UrlFieldXml {
     param([string] $Name, [string] $Display, [string] $Description = '')
-    "<Field Type='URL' Name='$Name' StaticName='$Name' DisplayName='$Display' Format='Hyperlink' Description='$Description' />"
+    "<Field Type='URL' Name='$(Esc $Name)' StaticName='$(Esc $Name)' DisplayName='$(Esc $Display)' Format='Hyperlink' Description='$(Esc $Description)' />"
 }
 
 function Ensure-LookupField {
@@ -167,7 +176,7 @@ function Ensure-LookupField {
     Write-Step "  lookup '$InternalName' → $TargetListUrl.$TargetField"
     $target = Get-PnPList -Identity $TargetListUrl
     $req = if ($Required) { 'TRUE' } else { 'FALSE' }
-    $xml = "<Field Type='Lookup' Name='$InternalName' StaticName='$InternalName' DisplayName='$Display' List='{$($target.Id)}' ShowField='$TargetField' Required='$req' RelationshipDeleteBehavior='Restrict' />"
+    $xml = "<Field Type='Lookup' Name='$(Esc $InternalName)' StaticName='$(Esc $InternalName)' DisplayName='$(Esc $Display)' List='{$($target.Id)}' ShowField='$(Esc $TargetField)' Required='$req' RelationshipDeleteBehavior='Restrict' />"
     Add-PnPFieldFromXml -List $ListUrl -FieldXml $xml | Out-Null
 }
 
