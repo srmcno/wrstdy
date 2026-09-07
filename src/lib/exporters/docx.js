@@ -216,7 +216,7 @@ export async function exportDocx(report, filename, sealUint8) {
     [{ text: 'Metric' }, { text: 'Current', align: AlignmentType.RIGHT }, { text: 'Proposed', align: AlignmentType.RIGHT }],
     [
       ['Cost per 1,000 gallons', { text: fmt.cd(report.curCP1K, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.cd(report.propCP1K, 'N/A'), align: AlignmentType.RIGHT }],
-      ['Operating Ratio', { text: fmt.ratio(report.curOR, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.ratio(report.propOR, 'N/A'), align: AlignmentType.RIGHT }],
+      ['Budget Coverage Ratio', { text: fmt.ratio(report.curOR, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.ratio(report.propOR, 'N/A'), align: AlignmentType.RIGHT }],
       ['Bill at 5,000 gal', { text: fmt.cd(report.cost5kCur, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.cd(report.cost5kProp, 'N/A'), align: AlignmentType.RIGHT }],
       ['Affordability Index', { text: fmt.pd(report.curAI, 'N/A'), align: AlignmentType.RIGHT }, { text: fmt.pd(report.propAI, 'N/A'), align: AlignmentType.RIGHT }],
       ['Debt Service Coverage (DSCR)', { text: fmt.ratio(report.curDSCR, 'No debt'), align: AlignmentType.RIGHT }, { text: fmt.ratio(report.propDSCR, 'No debt'), align: AlignmentType.RIGHT }],
@@ -230,7 +230,7 @@ export async function exportDocx(report, filename, sealUint8) {
   for (const [t, d] of [
     ['Cost to Produce and Deliver Water', 'Real cost of providing water/wastewater services: administration, operations, and maintenance.'],
     ['Current and Future Needs', 'Ongoing and upcoming infrastructure, equipment, and maintenance requirements.'],
-    ['Operating Ratio', "A measure of the system's financial health, comparing revenues to expenses."],
+    ['Budget Coverage Ratio', "A measure of the system's financial health, comparing revenues to expenses."],
     ['Affordability Index', 'A benchmark to determine whether rates remain affordable for the average household.'],
     ['Debt to Income Ratio', "A measure of the system's ability to manage debt obligations responsibly."],
   ]) {
@@ -295,8 +295,8 @@ export async function exportDocx(report, filename, sealUint8) {
 
   // Operating ratio details
   children.push(H('Detailed Financial Metrics'));
-  children.push(P('Operating Ratio', { bold: true, color: TEAL, after: 60 }));
-  children.push(P('The Operating Ratio compares total operational revenues to operational expenses. A ratio of 1.0 means break-even; 1.25 or higher indicates a healthy margin for reinvestment and reserves; below 1.0 means rates should rise or costs should be cut.', { color: MID }));
+  children.push(P('Budget Coverage Ratio', { bold: true, color: TEAL, after: 60 }));
+  children.push(P('This budget coverage ratio compares rate revenue to the full cash budget, including debt and reserve transfers. A ratio of 1.0 means break-even; 1.25 or higher indicates a healthy margin for reinvestment and reserves; below 1.0 means rates should rise or costs should be cut.', { color: MID }));
 
   children.push(P('Debt Service Coverage Ratio (DSCR)', { bold: true, color: TEAL, after: 60 }));
   children.push(P(`Net revenue after operating expenses divided by annual debt payments — the covenant metric USDA Rural Development and OWRB lenders typically require at 1.10–1.25 or better. Current: ${fmt.ratio(report.curDSCR, 'no debt in budget')}. Proposed: ${fmt.ratio(report.propDSCR, 'no debt in budget')}.`, { color: MID }));
@@ -315,11 +315,11 @@ export async function exportDocx(report, filename, sealUint8) {
 
   if (report.mhi > 0) {
     children.push(P('Affordability Index', { bold: true, color: TEAL, after: 60 }));
-    children.push(P('Cost of 5,000 gal ÷ Monthly MHI. USDA Rural Development considers utilities grant-eligible when the index exceeds 1.50% — a higher burden supports the grant case. Below 2.00% is considered affordable by EPA standards.', { color: MID }));
+    children.push(P('Cost of 5,000 gal ÷ Monthly MHI. Income percentages are planning screens, not grant-eligibility rules or guarantees of affordability. Verify program criteria with USDA RD and assess lower-income households separately.', { color: MID }));
     const aiNote = (v) => v == null ? 'N/A'
-      : v < 0.015 ? 'Highly affordable — below USDA RD grant threshold'
-      : v < 0.02 ? 'Affordable; supports USDA RD grant case'
-      : 'Affordability concern — strengthens grant case';
+      : v < 0.015 ? 'Below 1.5% of median household income'
+      : v < 0.02 ? 'Between 1.5% and 2% of median household income'
+      : 'At or above 2%: review household impacts';
     children.push(buildTable(
       [{ text: '' }, { text: 'Current', align: AlignmentType.RIGHT }, { text: 'Proposed', align: AlignmentType.RIGHT }],
       [

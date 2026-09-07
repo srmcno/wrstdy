@@ -19,7 +19,7 @@
 import {
   nv, budgetTotal, totalRevenue, normalizeTiers, hasUsageDistribution,
   classCustomers, classGallons, operatingRatio,
-  affordabilityIndex, debtServiceCoverage, monthlyDebtService, calc5Yr,
+  affordabilityIndex, debtServiceCoverage, monthlyDebtService, calc5Yr, targetFundBalance,
 } from './calc.js';
 
 export const SEVERITY_ORDER = { error: 0, warn: 1, info: 2 };
@@ -66,6 +66,48 @@ export function validateStudy(study = {}) {
   // Identity fields are advisory while drafting and blocking once the study is
   // being published as a board document.
   const identitySeverity = isComplete ? 'error' : 'warn';
+
+  // Invalid values must remain visible as findings, not silently become zero.
+  const checkNumber = (value, label, step, nonnegative = true) => {
+    if (value == null || String(value).trim() === '') return;
+    let text = String(value).trim();
+    if (text.startsWith('(') && text.endsWith(')')) text = '-' + text.slice(1, -1);
+    const number = Number(text.replace(/[$\s,]/g, ''));
+    if (!Number.isFinite(number) || (nonnegative && number < 0)) {
+      add(`numeric-${step}-${label}`, 'error', step, `Check ${label}`,
+        'Enter a valid number' + (nonnegative ? ' of zero or greater.' : '.') + ' This value cannot support a reliable recommendation.');
+    }
+  };
+  for (const c of enabled) {
+    for (const side of ['cur', 'prop']) {
+      const d = c[side] || {};
+      for (const key of ['customers', 'gallonsSold', 'minCharge']) checkNumber(d[key], `${c.name} ${side} ${key}`, 1);
+      const seen = new Set();
+      for (const [i, t] of (d.tiers || []).entries()) {
+        checkNumber(t.gal, `${c.name} ${side} block ${i + 1} gallons`, 1);
+        checkNumber(t.rate, `${c.name} ${side} block ${i + 1} rate`, 1);
+        if (nv(t.gal) > 0 && seen.has(nv(t.gal))) add(`duplicate-${c.id}-${side}-${i}`, 'error', 1,
+          `${c.name}: duplicate tier breakpoint`, 'Use one rate per cumulative gallon breakpoint. A duplicate would be ignored by the billing engine.');
+        seen.add(nv(t.gal));
+        if (!(nv(t.gal) > 0) && nv(t.rate) !== 0) add(`orphan-${c.id}-${side}-${i}`, 'error', 1,
+          `${c.name}: tier rate has no valid breakpoint`, 'Enter the cumulative gallon limit or remove this tier.');
+      }
+    }
+    for (const [i, row] of (c.usage || []).entries()) {
+      checkNumber(row.customers, `${c.name} usage ${i + 1} customers`, 1);
+      checkNumber(row.gallons, `${c.name} usage ${i + 1} gallons`, 1);
+    }
+  }
+  for (const [side, budget] of [['current', curB], ['proposed', propB]]) {
+    for (const [section, fields] of Object.entries(budget)) {
+      for (const [key, value] of Object.entries(fields || {})) checkNumber(value, `${side} ${section} ${key}`, 2);
+    }
+  }
+  for (const key of ['inflationRate', 'revenueGrowth', 'accountGrowth']) {
+    checkNumber(study.forecast?.[key], key, 4, false);
+    if (nv(study.forecast?.[key]) <= -100) add(`growth-${key}`, 'error', 4, `${key} must exceed -100%`, 'A zero or negative compounding factor is not a usable forecast.');
+  }
+  for (const [i, v] of (study.forecast?.debtService || []).entries()) checkNumber(v, `FY${i + 1} debt service`, 4);
 
   // ── Step 1: identity and demographics ────────────────────────────────────
   if (!String(si.systemName || '').trim()) {
@@ -216,8 +258,8 @@ export function validateStudy(study = {}) {
       'Current-rate comparisons (operating ratio, true cost of service, the current-track projection) read N/A without it. "Copy Cur→Prop" works in reverse too — fill Current first, then copy.');
   }
   if (propBT.total > 0 && !(nv(propB.oth?.depreciation) > 0)) {
-    add('no-depreciation', 'warn', 2, 'No depreciation set-aside in the proposed budget',
-      'Without a monthly depreciation line the system is not funding asset replacement — a standard finding in USDA RD and OWRB reviews.');
+    add('no-depreciation', 'warn', 2, 'No asset-replacement set-aside in the proposed budget',
+      'Confirm how asset replacement will be funded. This cash-budget line represents an actual reserve transfer, not noncash accounting depreciation.');
   }
   if (propBT.total > 0 && !(nv(propB.oth?.insurance) > 0) && !(nv(propB.veh?.insurance) > 0)) {
     add('no-insurance', 'info', 2, 'No insurance expense in the proposed budget',
@@ -239,19 +281,19 @@ export function validateStudy(study = {}) {
       `Operating ratio is ${propOR.toFixed(2)} (below 1.00). The proposed structure runs a monthly deficit of ${Math.abs(revProp.monthly - propBT.total).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}.`);
   } else if (propOR != null && propOR < 1.25) {
     add('or-thin', 'warn', 3, 'Proposed operating ratio is below the 1.25 benchmark',
-      `Operating ratio is ${propOR.toFixed(2)}. Above break-even, but with no margin for reinvestment or reserves.`);
+      `Operating ratio is ${propOR.toFixed(2)}. Above break-even with a margin below the planning target; inspect the reserves already included in the budget.`);
   }
 
   const propDSCR = debtServiceCoverage(propB, revProp.monthly);
   if (monthlyDebtService(propB) > 0 && propDSCR != null && propDSCR < 1.15) {
-    add('dscr-low', propDSCR < 1 ? 'error' : 'warn', 3, 'Debt service coverage is below typical loan covenants',
-      `DSCR is ${propDSCR.toFixed(2)}. USDA RD and OWRB covenants generally require 1.10–1.25. A shortfall here can constitute a covenant violation.`);
+    add('dscr-low', propDSCR < 1 ? 'error' : 'warn', 3, 'Debt service coverage is below the planning screen',
+      `DSCR is ${propDSCR.toFixed(2)}. Compare against the actual loan agreement; this planning screen does not determine covenant compliance.`);
   }
 
   const propAI = affordabilityIndex(classes, true, mhi);
   if (propAI != null && propAI > 0.025) {
-    add('affordability-high', 'warn', 3, 'Proposed rates exceed the 2.5% affordability threshold',
-      `The 5,000-gallon bill is ${(propAI * 100).toFixed(2)}% of monthly MHI. This strengthens a USDA RD grant case, but should be discussed openly with the board.`);
+    add('affordability-high', 'warn', 3, 'Proposed bill exceeds the 2.5% income screening level',
+      `The 5,000-gallon bill is ${(propAI * 100).toFixed(2)}% of monthly MHI. Review impacts on low-income households with the board. This screening percentage does not establish grant eligibility.`);
   }
 
   if (revCur.monthly > 0 && revProp.monthly > 0) {
@@ -266,15 +308,16 @@ export function validateStudy(study = {}) {
   const fc = study.forecast || {};
   if (propBT.total > 0) {
     const proj = calc5Yr(classes, curB, propB, fc);
-    const target = nv(fc.targetFundBalance);
+    const target = targetFundBalance(fc);
     const fy5 = proj.propFBArr[4] ?? 0;
     if (target > 0 && fy5 < target) {
       add('fb-below-target', 'warn', 4, 'Projected FY5 fund balance is below the target',
         `The proposed track ends year 5 at ${fy5.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} against a ${target.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} target.`);
     }
-    if (fy5 < 0) {
+    const firstNegative = proj.propFBArr.findIndex(v => v < 0);
+    if (firstNegative >= 0) {
       add('fb-negative', 'error', 4, 'Projected fund balance goes negative',
-        `The proposed track ends year 5 at ${fy5.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. The system cannot sustain the proposed rates over the forecast period.`);
+        `The proposed track first runs out of cash in FY${firstNegative + 1}, at ${proj.propFBArr[firstNegative].toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. The system cannot sustain the proposed rates over the forecast period.`);
     }
     if (!(nv(fc.targetFundBalance) > 0)) {
       add('no-target', 'info', 4, 'No target fund balance set',

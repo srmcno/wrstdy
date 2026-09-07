@@ -17,7 +17,7 @@
   -->
   <control namespace="ChoctawNationOWRM"
            constructor="WaterRateStudyTool"
-           version="2.2.0"
+           version="2.3.0"
            display-name-key="WaterRateStudyTool_Display_Name"
            description-key="WaterRateStudyTool_Desc"
            control-type="standard">
@@ -29,7 +29,7 @@
 
     <property name="StudiesJson"
               display-name-key="Studies (JSON)"
-              description-key="The rate study to edit, as JSON. Accepts one study object, an array of studies, or an export envelope. Bind to the SharePoint column holding the study payload."
+              description-key="The rate study to edit, as JSON. Accepts one study object, an array of studies, or an export envelope. Bind to the Dataverse or SharePoint column holding the study payload."
               of-type="Multiple"
               usage="input"
               required="false" />
@@ -78,7 +78,7 @@
 
     <property name="StudiesJsonOut"
               display-name-key="Studies out (JSON)"
-              description-key="The edited study payload. Patch this back to SharePoint in OnChange when Last event is 'save'."
+              description-key="The edited study payload. Patch this back to the host data source in OnChange when Last event is 'save'."
               of-type="Multiple"
               usage="output" />
 
@@ -144,7 +144,7 @@
 
     <resources>
       <code path="index.ts" order="1" />
-      <resx path="strings/WaterRateStudyTool.1033.resx" version="2.2.0" />
+      <resx path="strings/WaterRateStudyTool.1033.resx" version="2.3.0" />
     </resources>
   </control>
 </manifest>

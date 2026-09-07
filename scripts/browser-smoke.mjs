@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(root, 'dist');
+const CONTROL_BUNDLE = path.join(root, 'pcf/out/controls/WaterRateStudyTool/bundle.js');
 const PCF_BUNDLE = path.join(root, 'pcf/WaterRateStudyTool/app/wrs-app.js');
 
 let chromium;
@@ -68,6 +69,7 @@ const HOST_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   if (url === '/host') { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(HOST_PAGE); return; }
+  if (url === '/control-bundle.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); fs.createReadStream(CONTROL_BUNDLE).pipe(res); return; }
   if (url === '/wrs-app.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); fs.createReadStream(PCF_BUNDLE).pipe(res); return; }
   let file = path.join(DIST, url === '/' ? 'index.html' : url);
   if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST, 'index.html');
@@ -240,6 +242,58 @@ console.log('\nPower Apps code component');
   check('destroy() unmounts cleanly', await page.evaluate(() => document.querySelectorAll('#ctl .wrs-app').length), 0);
   check('no console errors', errors.filter(e => !/favicon|DevTools/i.test(e)).length, 0);
   await page.close();
+}
+
+// Exercise the actual compiled PCF wrapper and its PDF/Word dependencies.
+if (fs.existsSync(CONTROL_BUNDLE)) {
+  console.log('\nCompiled PCF control');
+  const { makeSampleStudy } = await import('../src/lib/sample-study.js');
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('http://localhost:4173/host');
+  await page.addScriptTag({ url: '/control-bundle.js' });
+  await page.evaluate(study => {
+    const ctl = new window.ChoctawNationOWRM.WaterRateStudyTool();
+    const context = {
+      mode: { allocatedHeight: 760, allocatedWidth: 1200, trackContainerResize: () => {} },
+      parameters: { StudiesJson: { raw: JSON.stringify(study) }, Mode: { raw: 'single' }, ReadOnly: { raw: false } },
+    };
+    window.__control = ctl; window.__context = context; window.__events = [];
+    ctl.init(context, () => window.__events.push(ctl.getOutputs()), {}, document.getElementById('ctl'));
+  }, makeSampleStudy());
+  await page.waitForSelector('#ctl .tabs');
+  check('compiled wrapper honors initial height', await page.locator('#ctl').evaluate(el => el.style.height), '760px');
+  await page.waitForTimeout(600);
+  check('compiled wrapper does not save on open', await page.evaluate(() => window.__events.length), 0);
+  await page.getByRole('button', { name: 'Study guide' }).click();
+  if (process.env.WRS_SCREENSHOT_DIR) {
+    fs.mkdirSync(process.env.WRS_SCREENSHOT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.WRS_SCREENSHOT_DIR, 'water-rate-study-desktop.png') });
+  }
+  await page.getByRole('button', { name: 'Continue study' }).click();
+  await page.evaluate(() => { window.__context.parameters.ReadOnly.raw = true; window.__control.updateView(window.__context); });
+  check('read-only disables editing', await page.locator('#ctl input').first().isDisabled(), true);
+  await page.getByRole('tab', { name: /Budget/ }).click();
+  check('reviewer can navigate to budget', await page.getByRole('tab', { name: /Budget/ }).getAttribute('aria-selected'), 'true');
+  check('newly rendered fields stay read-only', await page.locator('#ctl input').first().isDisabled(), true);
+  await page.evaluate(() => { window.__context.parameters.ReadOnly.raw = false; window.__control.updateView(window.__context); });
+  check('editing is restored after read-only', await page.locator('#ctl input').first().isDisabled(), false);
+  await page.getByRole('tab', { name: /Final Report/ }).click();
+  for (const [label, extension] of [['Export PDF', '.pdf'], ['Export Word', '.docx']]) {
+    await page.getByRole('button', { name: new RegExp(label) }).click();
+    await page.waitForFunction(ext => window.__events.some(e => e.LastEvent === 'file' && e.FileName.endsWith(ext)), extension, { timeout: 30000 });
+    const file = await page.evaluate(ext => window.__events.find(e => e.LastEvent === 'file' && e.FileName.endsWith(ext)), extension);
+    const bytes = Buffer.from(file.FileBase64, 'base64');
+    check(label + ' emits complete bytes', bytes.length, file.FileSizeBytes);
+    check(label + ' has document signature', extension === '.pdf' ? bytes.subarray(0, 5).toString() : bytes.subarray(0, 2).toString(), extension === '.pdf' ? '%PDF-' : 'PK');
+    if (process.env.WRS_SCREENSHOT_DIR) fs.writeFileSync(path.join(process.env.WRS_SCREENSHOT_DIR, 'sample-report' + extension), bytes);
+  }
+  check('compiled wrapper has no runtime errors', errors.length, 0);
+  await page.evaluate(() => window.__control.destroy());
+  await page.close();
+} else {
+  console.log('Compiled PCF wrapper not present; app-host checks ran, wrapper/export checks require npm --prefix pcf run build.');
 }
 
 await browser.close();

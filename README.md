@@ -9,7 +9,7 @@ It ships in two forms from one codebase:
 | | Standalone web app | Power Apps code component |
 | --- | --- | --- |
 | Where it runs | Any browser; a static host, or one self-contained HTML file | Inside a canvas app, on any device Power Apps runs on |
-| Persistence | This browser's `localStorage` | The canvas app → SharePoint |
+| Persistence | This browser's `localStorage` | The canvas app → Dataverse or SharePoint |
 | Files | Downloads directly | Handed to Power Apps to file in a document library |
 | Map | Full Leaflet map with council districts | Provided by the canvas app |
 | Analysis | Direct or via the bundled proxy | A Power Automate flow the app owns |
@@ -20,6 +20,14 @@ It ships in two forms from one codebase:
   plus a PnP provisioning script.
 - **[`docs/POWER-APPS-INTEGRATION.md`](docs/POWER-APPS-INTEGRATION.md)** — how
   to build, deploy, and wire the code component, with the canvas formulas.
+
+## Dataverse and Teams deployment (2.3)
+
+Use [deployment/DATAVERSE-TEAMS.md](deployment/DATAVERSE-TEAMS.md) for the Dataverse route, including Windows PowerShell 5.1 installation without Windows administrator rights, table schema, and canvas host formulas. Existing Power Platform customization/import privileges are still required.
+
+The PCF solution is the code component. The provisioning script adds four WRS-specific Dataverse tables and exports complete solution packages from development. A canvas host screen still needs to be bound to the component. Live Teams/Dataverse import must be verified in the target tenant.
+
+See [deployment/REVIEW.md](deployment/REVIEW.md) for corrected financial assumptions and verification scope. The **Build PCF solution and validate deployment** workflow produces managed and unmanaged component ZIPs on Windows, validates PowerShell 5.1 syntax, and runs the browser checks on Linux.
 
 ## Stack
 
@@ -89,8 +97,8 @@ packaging, adding it to an app).
   across-the-board adjustment needed to break even
 - **Operating Ratio, DSCR, Affordability Index, Debt-to-Income, Base Coverage**
   scorecard with insufficient-data handling (N/A instead of a red 0)
-- **USDA RD / EPA affordability benchmarks** with one-click base-rate suggestions
-  (an index *above* 1.5% of MHI supports USDA RD grant eligibility)
+- **Household-income screening bands** with illustrative base-charge scenarios
+  (these do not establish grant eligibility or guarantee household affordability)
 - **Data Check** — an automated pre-publication review that flags the mistakes
   that actually reach board packets: an annual MHI in the monthly field, a
   proposed side with rates but no customers, a usage distribution that

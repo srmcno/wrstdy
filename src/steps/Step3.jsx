@@ -191,7 +191,7 @@ Flag concerns and missing categories.`;
         ))}
         <div className="rdiv" />
         <div style={{ textAlign: 'center' }}>
-          <div className="rlb">Operating Ratio</div>
+          <div className="rlb">Budget Coverage Ratio</div>
           <div className="rn">{tots.total > 0 ? (rev / tots.total).toFixed(2) : '—'}</div>
         </div>
       </div>

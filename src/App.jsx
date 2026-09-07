@@ -62,15 +62,16 @@ export default function App() {
   latestRef.current = studies;
   const saveTimerRef = useRef(null);
   const dirtyRef = useRef(false);
+  const persistedRef = useRef(JSON.stringify(studies));
 
   const flushSave = useCallback(() => {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     if (!dirtyRef.current) return;
-    dirtyRef.current = false;
-    saveDB(latestRef.current);
+    if (saveDB(latestRef.current)) { dirtyRef.current = false; persistedRef.current = JSON.stringify(latestRef.current); }
   }, []);
 
   useEffect(() => {
+    if (JSON.stringify(studies) === persistedRef.current) return;
     dirtyRef.current = true;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
@@ -119,6 +120,7 @@ export default function App() {
       flushSave();
       const normalized = incoming.map(normalizeStudy);
       dirtyRef.current = false;
+      persistedRef.current = JSON.stringify(normalized);
       setStudies(normalized);
       setActiveId(prev => {
         if (normalized.some(s => s.id === prev)) return prev;

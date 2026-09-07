@@ -1,0 +1,4 @@
+{
+  "outDir": "out/controls",
+  "targets": { "chrome": "100", "edge": "100", "safari": "15.4", "firefox": "102" }
+}

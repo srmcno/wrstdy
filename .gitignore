@@ -19,3 +19,8 @@ pcf/WaterRateStudyTool/generated
 # The React application bundle, produced by `npm run build:pcf`. A build
 # artifact of src/, not source — rebuild it rather than committing it.
 pcf/WaterRateStudyTool/app
+
+# Release artifacts and environment exports
+release/
+deployment/exported/
+deployment/reports/

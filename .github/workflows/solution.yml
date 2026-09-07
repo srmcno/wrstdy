@@ -1,0 +1,66 @@
+name: Build PCF solution and validate deployment
+on:
+  push:
+    branches: [main, 'codex/**', 'claude/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  solution:
+    runs-on: windows-latest
+    env:
+      PP_TOOLS_TELEMETRY_OPTOUT: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      APPLICATIONINSIGHTS_CONFIGURATION_CONTENT: '{"disableAppInsights":true,"disableStatsbeat":true,"disableAllExtendedMetrics":true}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: npm ci
+      - run: npm test
+      - run: npm ci --prefix pcf
+      - name: Parse deployment in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null; $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'deployment/Install-WaterRateStudy.ps1'), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { $parseErrors | Format-List; throw 'PowerShell 5.1 parse failed' }
+      - name: Build both solution variants
+        run: dotnet build pcf/Solutions/Solutions.cdsproj -c Release /p:SolutionPackageType=Both
+      - name: Stage release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory release -Force | Out-Null
+          Copy-Item deployment release -Recurse
+          $files = Get-ChildItem pcf/Solutions/bin/Release -Filter '*.zip'
+          if ($files.Count -ne 2) { throw 'Expected managed and unmanaged component solution ZIPs' }
+          foreach ($file in $files) {
+            $suffix = if ($file.BaseName -match '_managed$') { 'managed' } else { 'unmanaged' }
+            Copy-Item $file.FullName "release/CNO-WaterRateStudy-PCF-$suffix.zip"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CNO-WaterRateStudy-2.3-Deployment
+          path: release/
+          if-no-files-found: error
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save --package-lock=false playwright@1.51.1
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run build:pcf
+      - run: npm ci --prefix pcf
+      - run: npm --prefix pcf run build -- --buildMode production
+      - run: npm run test:browser

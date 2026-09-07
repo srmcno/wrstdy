@@ -1,5 +1,5 @@
 import { defBudget } from '../lib/state.js';
-import { calc5Yr, budgetTotal, targetFundBalance, forecastInflation, nv, fmt } from '../lib/calc.js';
+import { calc5Yr, budgetTotal, operatingExpenses, targetFundBalance, forecastInflation, nv, fmt } from '../lib/calc.js';
 import { F, $I } from '../components/atoms.jsx';
 import { FundChart, RevExpChart } from '../components/Charts.jsx';
 
@@ -34,7 +34,7 @@ export function Step5({ study, onField }) {
   };
 
   // Industry guidance: hold roughly 3 months of O&M as an operating reserve.
-  const suggestedTarget = Math.round((propBT.total || curBT.total) * 3);
+  const suggestedTarget = Math.round(operatingExpenses(propBT.total > 0 ? propB : curB) * 3);
 
   return (
     <div className="stack">
@@ -83,7 +83,7 @@ export function Step5({ study, onField }) {
         <p style={{ fontSize: 11.5, color: 'var(--mid)', marginBottom: 10 }}>
           Debt payments follow amortization schedules, not inflation. Enter the known annual debt service per year to
           override the budget's monthly loan lines (currently {fmt.c(propBT.loa * 12)}/yr proposed, {fmt.c(curBT.loa * 12)}/yr current).
-          Leave a year blank to fall back to the budget amount. Leave all blank to keep the simple model.
+          Leave a year blank to fall back to the budget amount. A zero means no debt payment that year. With all years blank, budget debt stays fixed.
         </p>
         <table className="dt">
           <thead>
@@ -208,7 +208,7 @@ export function Step5({ study, onField }) {
       <div className="card">
         <div className="sh">Expense Sensitivity — 3% vs. 5% Inflation</div>
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 12 }}>
-          Sensitivity view only (proposed budget, simple compounding): how annual expenses would escalate at 3% and 5%
+          Sensitivity view (proposed budget, with the same debt schedule and one-time items): how annual expenses would escalate at 3% and 5%
           inflation — per the CNO Rate Study Final Report format. The projection above uses your forecast
           inflation rate of {forecastInflation(fc)}%.
         </p>
@@ -218,12 +218,12 @@ export function Step5({ study, onField }) {
           </thead>
           <tbody>
             {[['3% Inflation', 0.03], ['5% Inflation', 0.05]].map(([lbl, rate]) => {
-              const base = propBT.total * 12;
+              const sensitivity = calc5Yr(study.classes, curB, propB, { ...fc, inflationRate: rate * 100 });
               return (
                 <tr key={lbl}>
                   <td>{lbl}</td>
                   {proj.yrs.map((_, i) => {
-                    const v = base * Math.pow(1 + rate, i);
+                    const v = sensitivity.propExpArr[i];
                     return <td key={i} style={{ textAlign: 'right' }}>{fmt.c(v)}</td>;
                   })}
                 </tr>
