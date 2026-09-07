@@ -331,10 +331,10 @@ test('calc5Yr folds known one-time items into that year (negative = grant/revenu
   assert.equal(proj.propExpArr[1] - proj.propExpArr[0], 5000);
 });
 
-test('calc5Yr matches legacy behavior when schedule and known items are blank', () => {
+test('calc5Yr keeps unscheduled debt fixed while operating costs inflate', () => {
   const fc = { inflationRate: '3', debtService: ['', '', '', '', ''], knownItems: [{ label: '', vals: ['', '', '', '', ''] }] };
   const proj = calc5Yr(projClasses, budgetOf(2000, 500), budgetOf(2000, 500), fc);
-  assert.ok(Math.abs(proj.propExpArr[1] - 30000 * 1.03) < 1e-9);
+  assert.ok(Math.abs(proj.propExpArr[1] - (24000 * 1.03 + 6000)) < 1e-9);
   assert.equal(proj.knownArr[0], 0);
 });
 

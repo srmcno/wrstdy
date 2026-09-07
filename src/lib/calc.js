@@ -15,7 +15,7 @@ export const nv = (v) => {
   // Accounting negatives: (1,234.50) === -1234.50
   if (s.startsWith('(') && s.endsWith(')')) { sign = -1; s = s.slice(1, -1); }
   s = s.replace(/[$\s,]/g, '');
-  const n = parseFloat(s);
+  const n = Number(s);
   return Number.isFinite(n) ? sign * n : 0;
 };
 
@@ -288,12 +288,16 @@ export function debtToIncome(budget, rev) {
 // service = revenue − operating expenses, where operating expenses exclude
 // debt payments themselves and the discretionary reserve set-asides
 // (depreciation / long-range) that sit below the line.
+export function operatingExpenses(budget) {
+  const bt = budgetTotal(budget);
+  return bt.total - bt.loa - nv(budget?.oth?.depreciation) - nv(budget?.oth?.longRange);
+}
+
 export function debtServiceCoverage(budget, rev) {
   const bt = budgetTotal(budget);
   const debt = bt.loa;
   if (!(debt > 0)) return null;
-  const setAsides = nv(budget?.oth?.depreciation) + nv(budget?.oth?.longRange);
-  const opEx = bt.total - bt.loa - setAsides;
+  const opEx = operatingExpenses(budget);
   return (rev - opEx) / debt;
 }
 
@@ -372,7 +376,6 @@ export function calc5Yr(classes, curBudget, propBudget, forecast = {}) {
   const curBT = budgetTotal(curBudget);
   const propBT = budgetTotal(propBudget);
   const debtSchedule = Array.from({ length: 5 }, (_, i) => forecast?.debtService?.[i]);
-  const useSchedule = debtSchedule.some(v => String(v ?? '').trim() !== '' && nv(v) !== 0);
   const knownRows = Array.isArray(forecast?.knownItems) ? forecast.knownItems : [];
   const knownAt = (i) => knownRows.reduce((s, item) => s + nv(item?.vals?.[i]), 0);
 
@@ -392,20 +395,15 @@ export function calc5Yr(classes, curBudget, propBudget, forecast = {}) {
     const curYrRev = curRev * revMultiplier;
     const propYrRev = propRev * revMultiplier;
     const known = knownAt(i);
-    let curExp, propExp, debtYr;
-    if (useSchedule) {
-      const raw = debtSchedule[i];
-      debtYr = String(raw ?? '').trim() === '' ? null : nv(raw);
-      const curDebt = debtYr == null ? curBT.loa * 12 : debtYr;
-      const propDebt = debtYr == null ? propBT.loa * 12 : debtYr;
-      curExp = (curBT.total - curBT.loa) * 12 * esc + curDebt + known;
-      propExp = (propBT.total - propBT.loa) * 12 * esc + propDebt + known;
-      rows.debtArr.push(debtYr == null ? propDebt : debtYr);
-    } else {
-      curExp = curBT.total * 12 * esc + known;
-      propExp = propBT.total * 12 * esc + known;
-      rows.debtArr.push(propBT.loa * 12);
-    }
+    // A literal zero means paid off; blank means use that track's budget debt.
+    // Debt never inflates, even when no schedule has been supplied.
+    const raw = debtSchedule[i];
+    const debtYr = blank(raw) ? null : nv(raw);
+    const curDebt = debtYr == null ? curBT.loa * 12 : debtYr;
+    const propDebt = debtYr == null ? propBT.loa * 12 : debtYr;
+    const curExp = (curBT.total - curBT.loa) * 12 * esc + curDebt + known;
+    const propExp = (propBT.total - propBT.loa) * 12 * esc + propDebt + known;
+    rows.debtArr.push(propDebt);
     rows.curRevArr.push(curYrRev);
     rows.propRevArr.push(propYrRev);
     rows.curExpArr.push(curExp);

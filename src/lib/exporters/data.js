@@ -29,9 +29,9 @@ export function revenueBasisText(basis, where = 'the tool') {
   }
   if (basis === 'mixed') {
     return 'mixed — customer usage distributions were used for the classes where they were entered; ' +
-      'class averages were used for the remaining classes, which understates revenue for tiered rates in those classes.';
+      'class averages were used for the remaining classes, which can misstate revenue for tiered rates in those classes.';
   }
-  return 'class averages — every customer is assumed to use the class average, which understates revenue ' +
+  return 'class averages — every customer is assumed to use the class average, which can misstate revenue ' +
     `for tiered rates. Entering a customer usage distribution in ${where} improves accuracy.`;
 }
 
@@ -66,7 +66,7 @@ export function buildReport(study) {
     distCount === 0 ? 'none' : distCount === enabledClasses.length ? 'all' : 'mixed';
 
   const scorecard = [
-    { metric: 'Operating Ratio', cur: fmt.ratio(curOR, 'N/A'), prop: fmt.ratio(propOR, 'N/A'), benchmark: '≥ 1.25',
+    { metric: 'Budget Coverage Ratio', cur: fmt.ratio(curOR, 'N/A'), prop: fmt.ratio(propOR, 'N/A'), benchmark: '≥ 1.25',
       curOk: curOR == null ? null : curOR >= 1.25, propOk: propOR == null ? null : propOR >= 1.25 },
     { metric: 'Affordability Index', cur: fmt.pd(curAI, 'N/A'), prop: fmt.pd(propAI, 'N/A'), benchmark: '< 2.00%',
       curOk: curAI == null ? null : curAI < 0.02, propOk: propAI == null ? null : propAI < 0.02 },
@@ -127,7 +127,8 @@ export function buildReport(study) {
   const scenarioMonthlyRevenue = scenarioRows.reduce((sum, row) => sum + row.monthly, 0);
   const scenarioNetMonthly = scenarioMonthlyRevenue - propBT.total;
 
-  const expBaseAnnual = propBT.total * 12;
+  const sensitivity3 = calc5Yr(classes, curB, propB, { ...study.forecast, inflationRate: 3 });
+  const sensitivity5 = calc5Yr(classes, curB, propB, { ...study.forecast, inflationRate: 5 });
   const fcInflation = forecastInflation(study.forecast);
   const fiveYearOutlook = proj.yrs.map((yr, i) => ({
     yr,
@@ -135,8 +136,8 @@ export function buildReport(study) {
     // Projected expenses under the study's forecast assumptions — the row the
     // fund balance actually follows. exp3/exp5 are sensitivity comparisons.
     exp: proj.propExpArr[i],
-    exp3: expBaseAnnual * Math.pow(1.03, i),
-    exp5: expBaseAnnual * Math.pow(1.05, i),
+    exp3: sensitivity3.propExpArr[i],
+    exp5: sensitivity5.propExpArr[i],
     fundBalance: proj.propFBArr[i],
   }));
 

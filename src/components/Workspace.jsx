@@ -33,7 +33,7 @@ function SavedAgo({ iso }) {
   return (
     <span className="save-ind saved" title={iso ? `Last change ${fmt.date(iso)}` : undefined}>
       <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
-      Saved {label}
+      Edited {label}
     </span>
   );
 }
@@ -41,6 +41,7 @@ function SavedAgo({ iso }) {
 export function Workspace({ study, onUpdate, onDelete, onExport }) {
   const [step, setStep] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showGuide, setShowGuide] = useState(study.status === 'draft');
   // field('foo', v) sets a single key.
   // field({ a, b }) patches multiple keys atomically — required when one
   // handler needs to set two fields back-to-back.
@@ -85,6 +86,7 @@ export function Workspace({ study, onUpdate, onDelete, onExport }) {
           </div>
         </div>
         <SavedAgo iso={study.updatedAt} />
+        <button className="btn b-out btn-sm" aria-expanded={showGuide} onClick={() => setShowGuide(v => !v)}>Study guide</button>
         {/* The backup reminder only makes sense where this browser is the only
             copy. When the host persists studies (SharePoint via Power Apps),
             there is nothing for the user to back up. */}
@@ -141,6 +143,11 @@ export function Workspace({ study, onUpdate, onDelete, onExport }) {
               key={s.id}
               role="tab"
               aria-selected={step === s.id}
+              tabIndex={step === s.id ? 0 : -1}
+              onKeyDown={e => {
+                const next = e.key === 'ArrowRight' ? (step + 1) % STEPS.length : e.key === 'ArrowLeft' ? (step + STEPS.length - 1) % STEPS.length : e.key === 'Home' ? 0 : e.key === 'End' ? STEPS.length - 1 : null;
+                if (next !== null) { e.preventDefault(); setStep(next); e.currentTarget.parentElement.children[next].focus(); }
+              }}
               className={'tab' + (step === s.id ? ' on' : '')}
               onClick={() => setStep(s.id)}
               title={hint}
@@ -177,7 +184,20 @@ export function Workspace({ study, onUpdate, onDelete, onExport }) {
           </button>
         )}
       </div>
-      <div className="ws-sc">
+      <div className="ws-sc" role="tabpanel" aria-label={STEPS[step]?.l}>
+        {showGuide && <div className="study-guide no-print">
+          <div><span className="guide-eyebrow">CNO INTERNAL · RATE STUDY WORKSPACE</span>
+            <h2>Build a recommendation you can explain.</h2>
+            <p>Work from a complete billing year, document assumptions, and compare proposed bills with the system’s cash needs.</p></div>
+          <div className="guide-grid">
+            <div><strong>1. Gather evidence</strong><p>Billing register, customer counts, adopted rates, operating budget, debt schedule, reserve balances, and service-area income source.</p></div>
+            <div><strong>2. Model the change</strong><p>Use monthly averages from 12 months. Enter customer usage groups for tiered rates. A zero-rate first block can represent gallons included in the base charge.</p></div>
+            <div><strong>3. Review with the system</strong><p>Check early cash shortfalls, customer bill impacts, and all data findings. Record staff assumptions and board decisions in report notes.</p></div>
+          </div>
+          <p className="guide-foot">Cash-budget basis: the depreciation line is an actual asset-replacement reserve transfer. Beginning fund balance excludes restricted reserves; avoid counting the same capital funding twice. AI analysis is optional.</p>
+          <button className="btn b-teal btn-sm" onClick={() => setShowGuide(false)}>Continue study</button>
+        </div>}
+
         {step === 0 && <Step1 {...stepProps} />}
         {step === 1 && <Step2 {...stepProps} />}
         {step === 2 && <Step3 {...stepProps} />}

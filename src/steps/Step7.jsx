@@ -17,12 +17,12 @@ import { defer } from '../lib/defer.js';
 
 const SYSTEM_PROMPT = `You are a senior financial analyst for the Choctaw Nation Office of Water Resource Management (OWRM). You write rate-study analyses for tribal public water systems whose boards include non-experts.
 
-Your audience: water system board members, tribal council, and small-system operators. Avoid jargon; when you must use a technical term (e.g. "Operating Ratio"), define it in plain English the first time.
+Your audience: water system board members, tribal council, and small-system operators. Avoid jargon; when you must use a technical term (e.g. "Budget Coverage Ratio"), define it in plain English the first time.
 
 Style: clear, specific, board-ready. Cite numbers from the data given. Do not fabricate values. If a number is missing, zero, or marked N/A, call it out as a data gap rather than guessing. Use simple Markdown — # for top-level section headers, ## for subsections, **bold** for key figures, hyphenated bullets — but no tables (the report tool builds those separately).
 
 Standards to apply:
-- Operating Ratio (revenue ÷ total expenses incl. debt & set-asides): ≥ 1.25 healthy, 1.00–1.24 break-even, < 1.00 unsustainable.
+- Budget Coverage Ratio (revenue ÷ total expenses incl. debt & set-asides): ≥ 1.25 healthy, 1.00–1.24 break-even, < 1.00 unsustainable.
 - Debt Service Coverage Ratio (net revenue after O&M ÷ annual debt payments): USDA RD / OWRB loan covenants typically require ≥ 1.10–1.25.
 - Affordability Index (cost of 5,000 gal ÷ Monthly MHI): < 2.00% is EPA-affordable; an index ABOVE 1.50% generally supports USDA RD grant eligibility (higher burden strengthens the grant case — never describe a LOW index as "grant eligible").
 - Debt-to-Income: < 45% manageable.
@@ -83,7 +83,7 @@ function buildContext(study) {
     `- Monthly capital improvement set-aside: Current ${fmt.c(nv(curB.oth?.longRange))}, Proposed ${fmt.c(nv(propB.oth?.longRange))}`,
     ``,
     `RATIOS`,
-    `- Operating Ratio: Current ${r2(operatingRatio(revCur.monthly, curBT.total))}, Proposed ${r2(operatingRatio(revProp.monthly, propBT.total))} (benchmark ≥ 1.25)`,
+    `- Budget Coverage Ratio: Current ${r2(operatingRatio(revCur.monthly, curBT.total))}, Proposed ${r2(operatingRatio(revProp.monthly, propBT.total))} (benchmark ≥ 1.25)`,
     `- Debt Service Coverage (DSCR): Current ${r2(debtServiceCoverage(curB, revCur.monthly))}, Proposed ${r2(debtServiceCoverage(propB, revProp.monthly))} (covenant benchmark ≥ 1.25; N/A = no debt in budget)`,
     `- Affordability Index: Current ${fmt.pd(affordabilityIndex(classes, false, mhi), 'N/A')}, Proposed ${fmt.pd(affordabilityIndex(classes, true, mhi), 'N/A')} (< 2.00% EPA affordable; > 1.50% supports USDA RD grant eligibility)`,
     `- Debt-to-Income: Current ${fmt.pd(debtToIncome(curB, revCur.monthly), 'N/A')}, Proposed ${fmt.pd(debtToIncome(propB, revProp.monthly), 'N/A')} (benchmark < 45%)`,

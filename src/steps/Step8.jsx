@@ -47,17 +47,16 @@ export function Step8({ study, onField, onGoToStep }) {
   const proj = calc5Yr(classes, study.curBudget || defBudget(), study.propBudget || defBudget(), study.forecast || {});
   const rateStructure = rateStructureComparison(classes);
   const billImpact = billImpactExamples(classes);
-  const expBase = propBT.total * 12;
+  const sensitivity3 = calc5Yr(classes, study.curBudget, study.propBudget, { ...study.forecast, inflationRate: 3 });
+  const sensitivity5 = calc5Yr(classes, study.curBudget, study.propBudget, { ...study.forecast, inflationRate: 5 });
   const fcInflation = forecastInflation(study.forecast);
 
-  // Affordability status against the corrected USDA RD / EPA conventions:
-  // a HIGHER index (more of household income going to water) is what supports
-  // USDA RD grant eligibility; a lower index is simply more affordable.
+  // Income screening bands, not eligibility or compliance determinations.
   const aiLabel = (v) => {
     if (v == null) return '';
-    if (v < 0.015) return 'Highly affordable — below the 1.5% USDA RD grant threshold';
-    if (v < 0.02) return 'Affordable (EPA); ≥ 1.5% supports a USDA RD grant case';
-    return 'Affordability concern — strengthens the case for grant assistance';
+    if (v < 0.015) return 'Below 1.5% of median household income';
+    if (v < 0.02) return 'Between 1.5% and 2% of median household income';
+    return 'At or above 2%: review household impacts';
   };
 
   const [busy, setBusy] = useState('');
@@ -219,7 +218,7 @@ export function Step8({ study, onField, onGoToStep }) {
         {[
           { title: 'Cost to Produce and Deliver Water', desc: 'The real cost of providing water and/or wastewater services, including administration, operations, and maintenance.' },
           { title: 'Current and Future Needs of the System', desc: 'Ongoing and upcoming infrastructure, equipment, and maintenance requirements.' },
-          { title: 'Operating Ratio', desc: "A measure of the facility's financial health, comparing revenues to expenses." },
+          { title: 'Budget Coverage Ratio', desc: "A measure of the facility's financial health, comparing revenues to expenses." },
           { title: 'Affordability Index', desc: 'A benchmark to determine whether rates remain affordable for the average household in the service area.' },
           { title: 'Debt to Income Ratio', desc: "A measure of the system's ability to manage debt obligations responsibly." }
         ].map(({ title, desc }) => (
@@ -361,8 +360,8 @@ export function Step8({ study, onField, onGoToStep }) {
           <tbody>
             <tr><td>Annual Revenue (Proposed Rates)</td>{proj.propRevArr.map((v, i) => <td key={i} style={{ textAlign: 'right' }}>{fmt.c(v)}</td>)}</tr>
             <tr><td>Projected Annual Expenses ({fcInflation}% forecast)</td>{proj.propExpArr.map((v, i) => <td key={i} style={{ textAlign: 'right' }}>{fmt.c(v)}</td>)}</tr>
-            <tr><td style={{ color: 'var(--dim)' }}>Sensitivity: expenses at 3% inflation</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--dim)' }}>{fmt.c(expBase * Math.pow(1.03, i))}</td>)}</tr>
-            <tr><td style={{ color: 'var(--dim)' }}>Sensitivity: expenses at 5% inflation</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--dim)' }}>{fmt.c(expBase * Math.pow(1.05, i))}</td>)}</tr>
+            <tr><td style={{ color: 'var(--dim)' }}>Sensitivity: expenses at 3% inflation</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--dim)' }}>{fmt.c(sensitivity3.propExpArr[i])}</td>)}</tr>
+            <tr><td style={{ color: 'var(--dim)' }}>Sensitivity: expenses at 5% inflation</td>{proj.yrs.map((_, i) => <td key={i} style={{ textAlign: 'right', color: 'var(--dim)' }}>{fmt.c(sensitivity5.propExpArr[i])}</td>)}</tr>
           </tbody>
           <tfoot>
             <tr className="tr-t">
@@ -397,9 +396,9 @@ export function Step8({ study, onField, onGoToStep }) {
         </table>
       </div>
       <div className="card">
-        <div className="sh">Operating Ratio</div>
+        <div className="sh">Budget Coverage Ratio</div>
         <p style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--text)', marginBottom: 8 }}>
-          The Operating Ratio is a key measure of financial stability. It compares total operational revenues to operational expenses:
+          The Budget Coverage Ratio is a key measure of financial stability. It compares total operational revenues to operational expenses:
         </p>
         <ul style={{ fontSize: 12, color: 'var(--mid)', paddingLeft: 20, marginBottom: 12, lineHeight: 1.8 }}>
           <li>A ratio of 1.0 means the system breaks even</li>
@@ -408,14 +407,14 @@ export function Step8({ study, onField, onGoToStep }) {
         </ul>
         <div className="g2">
           <div style={{ padding: 12, background: 'var(--surface)', borderRadius: 7, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Current Operating Ratio</div>
+            <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Current Budget Coverage Ratio</div>
             <div style={{ fontSize: 24, color: curOR == null ? 'var(--dim)' : curOR >= 1.25 ? 'var(--lime-dim)' : curOR >= 1 ? 'var(--amber)' : 'var(--red)' }}>{fmt.ratio(curOR, 'N/A')}</div>
             <div style={{ fontSize: 11, color: 'var(--mid)', marginTop: 2 }}>
               {curOR == null ? 'Enter budget expenses to calculate' : curOR >= 1.25 ? 'Healthy (≥ 1.25)' : curOR >= 1.0 ? 'At break-even' : 'Below break-even'}
             </div>
           </div>
           <div style={{ padding: 12, background: 'var(--lime-pale)', borderRadius: 7, border: '1px solid #86efac' }}>
-            <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Proposed Operating Ratio</div>
+            <div style={{ fontSize: 10, color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>Proposed Budget Coverage Ratio</div>
             <div style={{ fontSize: 24, color: propOR == null ? 'var(--dim)' : propOR >= 1.25 ? 'var(--lime-dim)' : propOR >= 1 ? 'var(--amber)' : 'var(--red)' }}>{fmt.ratio(propOR, 'N/A')}</div>
             <div style={{ fontSize: 11, color: 'var(--mid)', marginTop: 2 }}>
               {propOR == null ? 'Enter budget expenses to calculate' : propOR >= 1.25 ? 'Healthy (≥ 1.25)' : propOR >= 1.0 ? 'At break-even' : 'Below break-even'}
@@ -429,7 +428,7 @@ export function Step8({ study, onField, onGoToStep }) {
           The Affordability Index measures how much of the average household's income is spent on water/wastewater services. It is calculated as: Cost of 5,000 Gallons ÷ Median Monthly Household Income.
         </p>
         <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 12 }}>
-          USDA Rural Development indicates that utilities are grant eligible if the Affordability Index exceeds 1.50%. An index below 2.00% is considered affordable by EPA standards.
+          Income percentages are planning screens, not grant-eligibility rules or guarantees of affordability. Verify program criteria with USDA RD and assess lower-income households separately.
         </p>
         {curAI != null && propAI != null ? (
           <div className="g3">

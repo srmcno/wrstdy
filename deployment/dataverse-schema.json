@@ -1,0 +1,176 @@
+{
+  "version": "2.3.0.0",
+  "solution": "ChoctawNationWaterRateStudy",
+  "publisher": "choctawnationowrm",
+  "prefix": "cnowrm",
+  "tables": [
+    {
+      "name": "cnowrm_wrssystem",
+      "label": "WRS Water System",
+      "plural": "WRS Water Systems",
+      "columns": [
+        {
+          "name": "cnowrm_pwsid",
+          "label": "PWS ID",
+          "type": "String",
+          "maxLength": 30
+        },
+        {
+          "name": "cnowrm_county",
+          "label": "County",
+          "type": "String",
+          "maxLength": 200
+        },
+        {
+          "name": "cnowrm_contact",
+          "label": "Contact",
+          "type": "String",
+          "maxLength": 200
+        },
+        {
+          "name": "cnowrm_email",
+          "label": "Contact Email",
+          "type": "String",
+          "maxLength": 200
+        },
+        {
+          "name": "cnowrm_phone",
+          "label": "Contact Phone",
+          "type": "String",
+          "maxLength": 50
+        },
+        {
+          "name": "cnowrm_address",
+          "label": "Address",
+          "type": "String",
+          "maxLength": 500
+        },
+        {
+          "name": "cnowrm_notes",
+          "label": "System Notes",
+          "type": "Memo",
+          "maxLength": 10000
+        }
+      ]
+    },
+    {
+      "name": "cnowrm_wrsstudy",
+      "label": "WRS Rate Study",
+      "plural": "WRS Rate Studies",
+      "columns": [
+        {
+          "name": "cnowrm_studykey",
+          "label": "Study Key",
+          "type": "String",
+          "maxLength": 100
+        },
+        {
+          "name": "cnowrm_studystatus",
+          "label": "Study Status",
+          "type": "String",
+          "maxLength": 30
+        },
+        {
+          "name": "cnowrm_studyyear",
+          "label": "Study Year",
+          "type": "String",
+          "maxLength": 10
+        },
+        {
+          "name": "cnowrm_payload",
+          "label": "Study Payload",
+          "type": "Memo",
+          "maxLength": 1048576
+        },
+        {
+          "name": "cnowrm_appversion",
+          "label": "App Version",
+          "type": "String",
+          "maxLength": 30
+        },
+        {
+          "name": "cnowrm_reviewnotes",
+          "label": "Review Notes",
+          "type": "Memo",
+          "maxLength": 10000
+        }
+      ],
+      "lookup": {
+        "name": "cnowrm_system",
+        "label": "Water System",
+        "target": "cnowrm_wrssystem"
+      }
+    },
+    {
+      "name": "cnowrm_wrsrevision",
+      "label": "WRS Study Revision",
+      "plural": "WRS Study Revisions",
+      "columns": [
+        {
+          "name": "cnowrm_payload",
+          "label": "Revision Payload",
+          "type": "Memo",
+          "maxLength": 1048576
+        },
+        {
+          "name": "cnowrm_appversion",
+          "label": "App Version",
+          "type": "String",
+          "maxLength": 30
+        },
+        {
+          "name": "cnowrm_reason",
+          "label": "Revision Reason",
+          "type": "String",
+          "maxLength": 500
+        }
+      ],
+      "lookup": {
+        "name": "cnowrm_study",
+        "label": "Rate Study",
+        "target": "cnowrm_wrsstudy"
+      }
+    },
+    {
+      "name": "cnowrm_wrsreport",
+      "label": "WRS Generated Report",
+      "plural": "WRS Generated Reports",
+      "columns": [
+        {
+          "name": "cnowrm_filename",
+          "label": "File Name",
+          "type": "String",
+          "maxLength": 255
+        },
+        {
+          "name": "cnowrm_mimetype",
+          "label": "MIME Type",
+          "type": "String",
+          "maxLength": 100
+        },
+        {
+          "name": "cnowrm_contentbase64",
+          "label": "File Content Base64",
+          "type": "Memo",
+          "maxLength": 1048576
+        },
+        {
+          "name": "cnowrm_sizebytes",
+          "label": "File Size Bytes",
+          "type": "Integer"
+        },
+        {
+          "name": "cnowrm_appversion",
+          "label": "App Version",
+          "type": "String",
+          "maxLength": 30
+        }
+      ],
+      "lookup": {
+        "name": "cnowrm_study",
+        "label": "Rate Study",
+        "target": "cnowrm_wrsstudy"
+      }
+    }
+  ]
+}

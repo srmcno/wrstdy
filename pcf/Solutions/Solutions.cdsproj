@@ -3,7 +3,7 @@
 
   <PropertyGroup>
     <ProjectGuid>30caaf13-2fd1-4fc5-91ae-0262c3a49b99</ProjectGuid>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
   </PropertyGroup>
 

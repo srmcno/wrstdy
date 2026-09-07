@@ -76,7 +76,10 @@ export function createPowerAppsHost(bridge) {
     },
 
     loadStudies: () => bridge.readStudies(),
-    saveStudies: (studies) => { bridge.writeStudies(studies); },
+    saveStudies: (studies) => {
+      if (JSON.stringify(studies).length > MAX_TEXT_PROPERTY_CHARS) throw new Error('Study exceeds the Power Apps text payload limit. Shorten analysis history or use single-study mode.');
+      bridge.writeStudies(studies);
+    },
 
     // The wrapper calls the returned pushStudies() when Power Apps sends a
     // different StudiesJson (a different SharePoint item selected, a refresh
@@ -105,7 +108,7 @@ export function createPowerAppsHost(bridge) {
       });
       return {
         ok: true,
-        message: `${filename} is ready — the app is saving it to the document library.`,
+        message: `${filename} has been sent to Power Apps. Confirm the host reports a successful file save.`,
       };
     },
 

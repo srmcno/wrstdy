@@ -36,6 +36,8 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
   private studyCount = 0;
   private lastEvent = '';
   private lastEventAt = '';
+  private eventClock = 0;
+  private aiTimeout: ReturnType<typeof setTimeout> | null = null;
   private fileName = '';
   private fileMimeType = '';
   private fileBase64 = '';
@@ -51,6 +53,8 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
   // an unrelated updateView (a resize, a theme change) doesn't reset the app.
   private lastStudiesJsonIn: string | null = null;
   private lastReadOnly: boolean | null = null;
+  private readOnlyObserver: MutationObserver | null = null;
+  private disabledBeforeReadOnly = new WeakMap<HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement, boolean>();
 
   public init(
     context: ComponentFramework.Context<IInputs>,
@@ -68,8 +72,6 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
     const studiesJson = context.parameters.StudiesJson?.raw ?? '';
     this.lastStudiesJsonIn = studiesJson;
 
-    this.applySize(context);
-
     this.app = mountWaterRateStudy(container, {
       studiesJson,
       multiStudy: (context.parameters.Mode?.raw ?? 'single') === 'workspace',
@@ -78,6 +80,7 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
       onAiRequest: (payload: Record<string, unknown>) => this.requestAi(payload),
     });
 
+    this.applySize(context);
     this.applyReadOnly(Boolean(context.parameters.ReadOnly?.raw));
   }
 
@@ -122,6 +125,8 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
     // spinner that never stops if the screen is navigated away from.
     this.pendingAi?.reject(new Error('The screen closed before the analysis came back.'));
     this.pendingAi = null;
+    if (this.aiTimeout) clearTimeout(this.aiTimeout);
+    this.readOnlyObserver?.disconnect();
     this.app?.destroy();
     this.app = null;
   }
@@ -154,9 +159,14 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
     const id = `ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     this.aiRequestId = id;
     this.aiRequestJson = JSON.stringify({ id, ...payload });
-    this.markEvent('ai-request');
     return new Promise<string>((resolve, reject) => {
       this.pendingAi = { id, resolve, reject };
+      this.aiTimeout = setTimeout(() => {
+        if (this.pendingAi?.id !== id) return;
+        this.pendingAi = null;
+        reject(new Error('Analysis timed out after 120 seconds. Check the flow and retry.'));
+      }, 120000);
+      this.markEvent('ai-request');
     });
   }
 
@@ -170,6 +180,8 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
     // one study's analysis on another.
     if (!pending || pending.id !== responseId) return;
     this.pendingAi = null;
+    if (this.aiTimeout) clearTimeout(this.aiTimeout);
+    this.aiTimeout = null;
     const error = context.parameters.AiResponseError?.raw ?? '';
     if (error) {
       pending.reject(new Error(error));
@@ -183,7 +195,8 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
     // A fresh timestamp on every event: canvas OnChange only fires when a
     // property value actually changes, so two saves in a row with identical
     // JSON would otherwise be invisible to the app.
-    this.lastEventAt = new Date().toISOString();
+    this.eventClock = Math.max(Date.now(), this.eventClock + 1);
+    this.lastEventAt = new Date(this.eventClock).toISOString();
     this.notifyOutputChanged();
   }
 
@@ -203,11 +216,27 @@ export class WaterRateStudyTool implements ComponentFramework.StandardControl<II
 
   private applyReadOnly(readOnly: boolean): void {
     this.lastReadOnly = readOnly;
-    // `inert` removes the subtree from hit-testing AND the tab order, which
-    // pointer-events alone does not — a keyboard user could otherwise still
-    // tab into and edit a "read only" study.
-    (this.container as HTMLElement & { inert?: boolean }).inert = readOnly;
-    this.container.setAttribute('aria-disabled', String(readOnly));
-    this.container.style.opacity = readOnly ? '0.72' : '';
+    // Keep step navigation and scrolling usable for reviewers. Disable editors
+    // and actions, including newly rendered controls after a tab change.
+    this.readOnlyObserver?.disconnect();
+    this.readOnlyObserver = null;
+    const apply = () => {
+      this.container.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement>('input, textarea, select, button').forEach(el => {
+        const navigation = el.tagName === 'BUTTON' && el.closest('.tabs, .ws-nv, .study-guide, .ws-bar') && !el.classList.contains('b-del');
+        if (readOnly && !navigation) {
+          if (!this.disabledBeforeReadOnly.has(el)) this.disabledBeforeReadOnly.set(el, el.disabled);
+          el.disabled = true;
+        } else if (this.disabledBeforeReadOnly.has(el)) {
+          el.disabled = this.disabledBeforeReadOnly.get(el) ?? false;
+          this.disabledBeforeReadOnly.delete(el);
+        }
+      });
+    };
+    apply();
+    if (readOnly) {
+      this.readOnlyObserver = new MutationObserver(apply);
+      this.readOnlyObserver.observe(this.container, { childList: true, subtree: true });
+    }
+    this.container.setAttribute('data-wrs-readonly', String(readOnly));
   }
 }

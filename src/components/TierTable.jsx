@@ -1,4 +1,4 @@
-import { nv, tierTopAmounts, calcHML, fmt } from '../lib/calc.js';
+import { nv, calcBill, tierTopAmounts, calcHML, fmt } from '../lib/calc.js';
 
 export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
   const tops = tierTopAmounts(minCharge, tiers);
@@ -30,7 +30,7 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
     <div>
       {hml && (
         <div style={{ marginBottom: 10 }}>
-          <div className="flb" style={{ marginBottom: 6 }}>Recommended Base Charge (% of Monthly MHI)</div>
+          <div className="flb" style={{ marginBottom: 6 }}>Illustrative Base Charge (% of Monthly MHI)</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn b-low btn-sm" onClick={() => onSetBase(hml.low.toFixed(2))}>
               Low — {fmt.c(hml.low)} <span style={{ fontSize: 10 }}>(1.5% of MHI)</span>
@@ -43,11 +43,11 @@ export function TierTable({ minCharge, tiers, onChange, mhi, onSetBase }) {
             </button>
           </div>
           <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 5 }}>
-            Anchored to a 5,000-gal bill. USDA RD grant assistance generally targets systems whose water cost exceeds 1.5% of MHI; below 2.0% is considered affordable (EPA benchmark 2.5%).
+            Illustrative base charges for a 5,000-gallon bill. These income screens do not establish revenue sufficiency, household affordability, or grant eligibility.
           </div>
-          {nv(minCharge) > 0 && nv(minCharge) <= hml.low + 0.01 && (
+          {calcBill(minCharge, tiers, 5000) > 0 && calcBill(minCharge, tiers, 5000) <= nv(mhi) * 0.015 && (
             <div className="al al-ok" style={{ marginTop: 8, fontSize: 11 }}>
-              Bill at 5,000 gallons stays under 1.5% of MHI — comfortably affordable. Note: systems this affordable typically do <strong>not</strong> meet the USDA RD grant-eligibility test, which targets cost burdens above 1.5% of MHI.
+              The base charge is within the 1.5% income screen. Verify the full bill, revenue needs, and impacts on lower-income households before recommending rates.
             </div>
           )}
         </div>

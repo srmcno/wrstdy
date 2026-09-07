@@ -1,3 +1,5 @@
+> For this release, start with [Dataverse and Teams deployment](../deployment/DATAVERSE-TEAMS.md). The SharePoint flow examples below describe the alternative backend and are not provisioned by the Dataverse installer. Runtime requires modern Teams/Edge/Chrome; development uses Node 20+ and .NET 8. Use the checked-in PCF lockfile and `npm ci`.
+
 # Power Apps Integration — Water Rate Study Tool code component
 
 How to build, deploy, and wire the `ChoctawNationOWRM.WaterRateStudyTool` code
@@ -40,10 +42,10 @@ is the supported alternative and costs about 45 KB gzipped.
 
 ### Prerequisites
 
-- Node 18+
+- Node 20+
 - [Power Platform CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)
   (`pac install latest`)
-- .NET SDK 6+ (for the solution build)
+- .NET SDK 8+ (for the solution build)
 - **Power Apps component framework for canvas apps** enabled in the target
   environment: Power Platform admin center → Environments → *your environment*
   → Settings → Product → Features.
@@ -90,7 +92,7 @@ pac pcf push --publisher-prefix cnowrm
 ```bash
 cd pcf/Solutions
 dotnet build -c Release          # → bin/Release/Solutions.zip (managed)
-dotnet build                     # unmanaged, for a dev environment
+dotnet build /p:SolutionPackageType=Unmanaged # development
 ```
 
 Import the `.zip` in the maker portal (Solutions → Import solution). The
@@ -117,7 +119,7 @@ deploy.
 | --- | --- | --- |
 | `StudiesJson` | Multiline text | The study to edit. Accepts one study object, an array, or an export envelope (`{study}` / `{studies}`). |
 | `Mode` | Enum | `single` (default) — one study, app owns the list. `workspace` — the component shows its own study list and dashboard. |
-| `ReadOnly` | Boolean | Displays the study with editing disabled (`inert`, so keyboard access is blocked too). |
+| `ReadOnly` | Boolean | Displays the study with editing disabled (editing disabled; step navigation remains available). |
 | `AiResponseId` | Text | Echo of `AiRequestId`; delivers a reply to the waiting request. |
 | `AiResponseText` | Multiline text | The analysis returned by your flow. |
 | `AiResponseError` | Text | Set instead of `AiResponseText` when the flow failed. |

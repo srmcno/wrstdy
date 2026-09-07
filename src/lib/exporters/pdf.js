@@ -342,7 +342,7 @@ export async function exportPDF(report, filename) {
   // a wide blank space, which broke the "Cur → Prop" layout on the cover.
   const cells = [
     ['Cost / 1,000 gal (Cur to Prop)', `${fmt.cd(report.curCP1K, 'N/A')} – ${fmt.cd(report.propCP1K, 'N/A')}`],
-    ['Operating Ratio (Cur to Prop)', `${fmt.ratio(report.curOR, 'N/A')} – ${fmt.ratio(report.propOR, 'N/A')}`],
+    ['Budget Coverage Ratio (Cur to Prop)', `${fmt.ratio(report.curOR, 'N/A')} – ${fmt.ratio(report.propOR, 'N/A')}`],
     ['5,000 gal Bill (Cur to Prop)', `${fmt.cd(report.cost5kCur, 'N/A')} – ${fmt.cd(report.cost5kProp, 'N/A')}`],
     ['Affordability Index (Prop)', report.mhi ? fmt.pd(report.propAI, 'N/A') : 'MHI not entered'],
   ];
@@ -372,7 +372,7 @@ export async function exportPDF(report, filename) {
   const factors = [
     ['Cost to Produce and Deliver Water', 'Real cost of providing water/wastewater services: administration, operations, and maintenance.'],
     ['Current and Future Needs', 'Ongoing and upcoming infrastructure, equipment, and maintenance requirements.'],
-    ['Operating Ratio', "A measure of the system's financial health, comparing revenues to expenses."],
+    ['Budget Coverage Ratio', "A measure of the system's financial health, comparing revenues to expenses."],
     ['Affordability Index', 'A benchmark to determine whether rates remain affordable for the average household in the service area.'],
     ['Debt to Income Ratio', "A measure of the system's ability to manage debt obligations responsibly."],
   ];
@@ -519,21 +519,21 @@ export async function exportPDF(report, filename) {
     if (report.expCats.length > 0) chartSlot('Expense Breakdown by Category', breakdownChart, 84);
   }
 
-  // ---- Operating Ratio + Affordability + DTI ----
+  // ---- Budget Coverage Ratio + Affordability + DTI ----
   pdfDoc.addPage();
   drawHeader(pdfDoc, report, sealDataUrl);
   y = CONTENT_TOP;
   y = H1(pdfDoc, 'Detailed Financial Metrics', y);
 
   y = ensureSpace(pdfDoc, report, sealDataUrl, y, 40);
-  y = H2(pdfDoc, 'Operating Ratio', y);
-  y = P(pdfDoc, 'The Operating Ratio compares total operational revenues to operational expenses. A ratio of 1.0 = break even; 1.25+ = healthy margin for reinvestment and reserves; below 1.0 = the system should raise rates or reduce costs to remain solvent.', y, { color: MID });
+  y = H2(pdfDoc, 'Budget Coverage Ratio', y);
+  y = P(pdfDoc, 'This budget coverage ratio compares rate revenue to the full cash budget, including debt and reserve transfers. A ratio of 1.0 = break even; 1.25+ = healthy margin for reinvestment and reserves; below 1.0 = the system should raise rates or reduce costs to remain solvent.', y, { color: MID });
   y += 2;
   autoTable(pdfDoc, tableBase(report, sealDataUrl, {
     startY: y,
     head: [['', 'Current', 'Proposed', 'Status']],
     body: [
-      ['Operating Ratio', fmt.ratio(report.curOR, 'N/A'), fmt.ratio(report.propOR, 'N/A'),
+      ['Budget Coverage Ratio', fmt.ratio(report.curOR, 'N/A'), fmt.ratio(report.propOR, 'N/A'),
         report.propOR == null ? 'Insufficient data' : report.propOR >= 1.25 ? 'Healthy' : report.propOR >= 1 ? 'Break-even' : 'Below target'],
     ],
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
@@ -542,13 +542,13 @@ export async function exportPDF(report, filename) {
 
   y = ensureSpace(pdfDoc, report, sealDataUrl, y, 50);
   y = H2(pdfDoc, 'Affordability Index', y);
-  y = P(pdfDoc, 'The Affordability Index measures household water cost as a share of monthly income (Cost of 5,000 gal ÷ Monthly MHI). USDA Rural Development considers utilities grant-eligible when the index exceeds 1.50% — a higher burden supports the grant case. Below 2.00% is considered affordable by EPA standards.', y, { color: MID });
+  y = P(pdfDoc, 'The Affordability Index measures household water cost as a share of monthly income (Cost of 5,000 gal ÷ Monthly MHI). Income percentages are planning screens, not grant-eligibility rules or guarantees of affordability. Verify program criteria with USDA RD and assess lower-income households separately.', y, { color: MID });
   y += 2;
   if (report.mhi > 0) {
     const aiNote = (v) => v == null ? 'N/A'
-      : v < 0.015 ? 'Highly affordable — below USDA RD grant threshold'
-      : v < 0.02 ? 'Affordable; supports USDA RD grant case'
-      : 'Affordability concern — strengthens grant case';
+      : v < 0.015 ? 'Below 1.5% of median household income'
+      : v < 0.02 ? 'Between 1.5% and 2% of median household income'
+      : 'At or above 2%: review household impacts';
     autoTable(pdfDoc, tableBase(report, sealDataUrl, {
       startY: y,
       head: [['', 'Current', 'Proposed', 'Note']],
@@ -573,7 +573,7 @@ export async function exportPDF(report, filename) {
     head: [['', 'Current', 'Proposed', 'Status']],
     body: [
       ['Debt Service Coverage (DSCR)', fmt.ratio(report.curDSCR, 'No debt'), fmt.ratio(report.propDSCR, 'No debt'),
-        report.propDSCR == null ? 'No debt in budget' : report.propDSCR >= 1.25 ? 'Meets covenant' : report.propDSCR >= 1.1 ? 'Thin margin' : 'Below covenant'],
+        report.propDSCR == null ? 'No debt in budget' : report.propDSCR >= 1.25 ? 'Above planning target' : report.propDSCR >= 1.1 ? 'Thin margin' : 'Below planning target'],
       ['Debt-to-Income (DTI)', fmt.pd(report.curDTI, 'N/A'), fmt.pd(report.propDTI, 'N/A'),
         report.propDTI == null ? 'Insufficient data' : report.propDTI < 0.45 ? 'Manageable' : 'High'],
     ],
